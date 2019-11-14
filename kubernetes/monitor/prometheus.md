@@ -89,3 +89,5 @@ grafana admin用户密码获取
 
 导入kubernetes集群监控dashboard。导入json内容参考附件。
 [kubernetes-cluster-monitoring-via-prometheus_rev1.json](./kubernetes-cluster-monitoring-via-prometheus_rev1.json)
+
+prometheus容量规划。[prometheus_helm.xlsx](./prometheus_helm.xlsx)
