@@ -21,7 +21,7 @@ categories: kubernetes istio helm
 
 ```
 
-部署bookinfo应用, 需要用到[bookinfo.yaml](https://github.com/honglei24/honglei24.github.io/appendix/kubernetes/istio/bookinfo.yaml)和[bookinfo-gateway.yaml](https://github.com/honglei24/honglei24.github.io/appendix/kubernetes/istio/bookinfo-gateway.yaml)
+部署bookinfo应用, 需要用到[bookinfo.yaml](https://github.com/honglei24/honglei24.github.io/tree/master/appendix/kubernetes/istio/bookinfo.yaml)和[bookinfo-gateway.yaml](https://github.com/honglei24/honglei24.github.io/tree/master/appendix/kubernetes/istio/bookinfo-gateway.yaml)
 ```
 # kubectl label namespace default istio-injection=enabled
 # kubectl get namespace -L istio-injection
