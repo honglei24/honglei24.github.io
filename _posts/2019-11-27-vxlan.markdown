@@ -1,0 +1,63 @@
+---
+layout: post
+title:  "vxlan实践"
+date:   2019-11-27 19:09:00 +0800
+categories: network vxlan
+---
+
+# 实验环境
+
+|-------+----------|
+|   IP  | 操作系统  |
+|-------+----------|
+|  ----  | ----  |
+| 192.168.122.153  | CentOS8 |
+| 192.168.122.89  | CentOS8 |
+
+# 点对点vxlan
+## 192.168.122.153配置
+创建vxlan接口， id制定的vni值，vtep两端要一致，dsport 4789是IANA分配的值，不指定的话linux会给一个默认值8472。
+```
+# ip link add vxlan0 type vxlan id 42  dstport 4789 remote 192.168.122.89 local 192.168.122.153 dev ens3
+```
+查看vxlan详细信息，可以发现mtu是1450，因为ens3的mtu是1500, vxlan的报文比元报文多出50字节(8字节vxlan头+8字节UDP头+20字节的IP头+14字节的MAC头)
+```
+# ip -d link show dev vxlan0
+```
+配置ip地址
+```
+# ip addr add 172.17.1.2/24 dev vxlan0
+# ip link set vxlan0 up
+# ip route
+default via 192.168.122.1 dev ens3 proto dhcp metric 100 
+172.17.1.0/24 dev vxlan0 proto kernel scope link src 172.17.1.2 
+192.168.122.0/24 dev ens3 proto kernel scope link src 192.168.122.153 metric 100 
+
+```
+查看fdb表信息，该表的含义是默认vtep对端地址为192.168.122.89。fdb表记录的是MAC+VLAN和PORT的对应关系；FDB表的作用就在于告诉设备从某个端口出去就可以到某个目的MAC。
+```
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 192.168.122.89 via ens3 self permanent
+```
+## 192.168.122.89配置
+```
+# ip link add vxlan0 type vxlan id 42  dstport 4789 remote 192.168.122.153 local 192.168.122.89 dev ens3
+#  ip -d link show dev vxlan0
+# ip addr add 172.17.1.3/24 dev vxlan0
+# ip link set vxlan0 up
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 192.168.122.153 via ens3 self permanent
+# ping 172.17.1.2 -c 2
+PING 172.17.1.2 (172.17.1.2) 56(84) bytes of data.
+64 bytes from 172.17.1.2: icmp_seq=1 ttl=64 time=1.28 ms
+64 bytes from 172.17.1.2: icmp_seq=2 ttl=64 time=1.21 ms
+
+--- 172.17.1.2 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 3ms
+rtt min/avg/max/mdev = 1.209/1.243/1.277/0.034 ms
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 192.168.122.153 via ens3 self permanent
+16:e1:78:1b:9a:5e dst 192.168.122.153 self 
+```
+ping通之后，可以发现学到了对端的mac地址。
+

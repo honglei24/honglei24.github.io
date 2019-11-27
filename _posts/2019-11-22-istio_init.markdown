@@ -21,14 +21,14 @@ categories: kubernetes istio helm
 
 ```
 
-部署bookinfo应用
+部署bookinfo应用, 需要用到[bookinfo.yaml](https://github.com/honglei24/honglei24.github.io/appendix/kubernetes/istio/bookinfo.yaml)和[bookinfo-gateway.yaml](https://github.com/honglei24/honglei24.github.io/appendix/kubernetes/istio/bookinfo-gateway.yaml)
 ```
 # kubectl label namespace default istio-injection=enabled
 # kubectl get namespace -L istio-injection
 
-# kubectl apply -f samples/bookinfo/platform/kube/bookinfo.yaml
+# kubectl apply -f bookinfo.yaml
 # kubectl get pods
-# kubectl apply -f samples/bookinfo/networking/bookinfo-gateway.yaml
+# kubectl apply -f bookinfo-gateway.yaml
 # export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
 # export SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')
 # export INGRESS_HOST=<k8s-node ip>
