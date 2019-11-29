@@ -2,9 +2,9 @@
 title: Honglei Blog
 SEOTitle: 洪磊的博客 | Honglei Blog
 header-img: img/home-bg.jpg
-email: honglei24@gmail.com
+email: shaka202@gmail.com
 description: "写点啥呢。"
-keyword: "博客, 个人网站, 互联网, Web, Openstack, Kubernetes"
+keyword: "博客, 个人网站, 互联网, Openstack, Kubernetes"
 url:               # your host, for absolute URL
 baseurl: ""                             # for example, '/blog' if your blog hosted on 'host/blog'
 

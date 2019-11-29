@@ -97,7 +97,7 @@ rtt min/avg/max/mdev = 0.100/0.100/0.100/0.000 ms
 # ip netns exec ns2 ip addr add 10.10.200.1 peer 10.10.100.1 dev tun1
 ```
 
-查看路由变化，测试联通性，并抓包分析。
+查看路由变化，测试连通性，并抓包分析。
 ```
 # ip netns exec ns2 route -n
 Kernel IP routing table

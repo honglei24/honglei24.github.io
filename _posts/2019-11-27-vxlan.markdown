@@ -4,15 +4,6 @@ title:  "vxlan实践"
 date:   2019-11-27 19:09:00 +0800
 categories: network vxlan
 ---
-# 实验环境
-
-|-------+----------|
-|   IP  | 操作系统  |
-|-------+----------|
-|  ----  | ----  |
-| 192.168.122.153  | CentOS8 |
-| 192.168.122.89  | CentOS8 |
-
 # 名词解释
 VXLAN(Virtual eXtensible LAN, 虚拟可扩展的局域网)，是一直overlay技术，通过三层网络搭建虚拟的二层网络。
 
@@ -23,6 +14,15 @@ VNI(VXLAN Network Identifier)，VXLAN的标识，占24bit，因此取值范围�
 FDB(Forwarding DataBase)，交换机从它的所有端口接收Media Access Control (MAC)地址信息，形成MAC地址表并维护它。当交换机收到一帧数据时，它将根据自己的MAC地址表来决定是将这帧数据进行过滤还是转发。此时，维护的这张MAC表就是FDB地址表。
 
 # 点对点vxlan
+## 实验环境
+
+|-------+----------|
+|   IP  | 操作系统  |
+|-------+----------|
+|  ----  | ----  |
+| 192.168.122.153  | CentOS8 |
+| 192.168.122.89  | CentOS8 |
+
 #### 192.168.122.153配置
 创建vxlan接口， id制定的vni值，vtep两端要一致，dsport 4789是IANA分配的值，不指定的话linux会给一个默认值8472。
 ```
@@ -71,22 +71,86 @@ rtt min/avg/max/mdev = 1.209/1.243/1.277/0.034 ms
 ```
 ping通之后，可以发现学到了对端的mac地址。
 
+
 # 多播模式的vxlan
-实验前可以先删除之前创建的vxlan接口
+创建两个namespace，创建一堆veth pair设备，将两端分别插入两个namespace，并确认连通性。
 ```
-# ip link delete dev vxlan0
+# ip netns add ns1
+# ip netns add ns2
+# ip link add v1 type veth peer name v2
+# ip link set v1 netns ns1
+# ip link set v2 netns ns2
+
+# ip netns exec ns1 ip addr add 10.0.0.1/24 dev v1
+# ip netns exec ns1 ip link set v1 up
+# ip netns exec ns2 ip addr add 10.0.0.2/24 dev v2
+# ip netns exec ns2 ip link set v2 up
+# ip netns exec ns2 ping 10.0.0.1 -c 1
+PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.
+64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=0.038 ms
+
+--- 10.0.0.1 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.038/0.038/0.038/0.000 ms
+
 ```
 
-#### 192.168.122.153配置
+ns1配置
 ```
-# ip link add vxlan0 type vxlan id 42 dstport 4789 local 192.168.122.153 group 224.1.1.1 dev ens3
-# ip addr add 172.17.1.100/24 dev vxlan0
+# ip netns exec ns1 bash
+# ip link add vxlan0 type vxlan id 100 dstport 4789 local 10.0.0.1 group 224.1.1.1 dev v1
+# ip addr add 172.17.0.1/24 dev vxlan0
 # ip link set vxlan0 up
+# ip -d link show vxlan0
+3: vxlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether ce:ce:82:f3:53:39 brd ff:ff:ff:ff:ff:ff promiscuity 0 
+    vxlan id 100 group 224.1.1.1 local 10.0.0.1 dev v1 srcport 0 0 dstport 4789 ttl inherit ageing 300 udpcsum noudp6zerocsumtx noudp6zerocsumrx addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 224.1.1.1 via v1 self permanent
+# exit
 ```
 
-#### 192.168.122.89配置
+ns2配置
 ```
-# ip link add vxlan0 type vxlan id 42 dstport 4789 local 192.168.122.89 group 224.1.1.1 dev ens3
-# ip addr add 172.17.1.101/24 dev vxlan0
+# ip netns exec ns2 bash
+# ip link add vxlan0 type vxlan id 100 dstport 4789 local 10.0.0.2 group 224.1.1.1 dev v2
+# ip addr add 172.17.0.2/24 dev vxlan0
 # ip link set vxlan0 up
+# ip -d link show vxlan0
+3: vxlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether 66:1f:78:79:11:6e brd ff:ff:ff:ff:ff:ff promiscuity 0 
+    vxlan id 100 group 224.1.1.1 local 10.0.0.2 dev v2 srcport 0 0 dstport 4789 ttl inherit ageing 300 udpcsum noudp6zerocsumtx noudp6zerocsumrx addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 224.1.1.1 via v2 self permanent 
 ```
+不知道对端的vtep在那台主机上的时候，vtep会往224.1.1.1发送组播报文。
+
+在ns2里ping ns1中的vxlan0 ip地址
+```
+# ping 172.17.0.1 -c 1
+PING 172.17.0.1 (172.17.0.1) 56(84) bytes of data.
+64 bytes from 172.17.0.1: icmp_seq=1 ttl=64 time=0.084 ms
+
+--- 172.17.0.1 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.084/0.084/0.084/0.000 ms
+# bridge fdb show dev vxlan0
+00:00:00:00:00:00 dst 224.1.1.1 via v2 self permanent
+ce:ce:82:f3:53:39 dst 10.0.0.1 self
+```
+ping通之后发现新增了一条fdb规则，ce:ce:82:f3:53:39正式ns1中vxlan0的mac地址。
+
+如果另开一个窗口在ns2中通过tcpdump抓包的话，可以看到有组播包出去。
+```
+# ip netns exec ns2 bash
+# tcpdump -i v2 -n
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on v2, link-type EN10MB (Ethernet), capture size 262144 bytes
+18:43:23.159476 IP 10.0.0.2.44045 > 224.1.1.1.vxlan: VXLAN, flags [I] (0x08), vni 100
+IP 172.17.0.2 > 172.17.0.1: ICMP echo request, id 1979, seq 1, length 64
+18:43:23.159560 IP 10.0.0.1.44045 > 10.0.0.2.vxlan: VXLAN, flags [I] (0x08), vni 100
+IP 172.17.0.1 > 172.17.0.2: ICMP echo reply, id 1979, seq 1, length 64
+18:43:24.171318 IP 10.0.0.2.44045 > 10.0.0.1.vxlan: VXLAN, flags [I] (0x08), vni 100
+# exit
+```
+kubernetes的CNI插件flannel的vxlan模式就是通过维护fdb表和arp表来实现的。
