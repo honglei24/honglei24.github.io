@@ -1,0 +1,126 @@
+---
+layout: post
+title:  "ipip实验"
+date:   2019-11-27 16:19:00 +0800
+
+---
+# 实验环境
+
+![ipip实验环境]({{ site.url }}/assets/network/ipip.jpg "实验环境")
+
+# 名词解释
+```
+# ip tunnel help
+Usage: ip tunnel { add | change | del | show | prl | 6rd } [ NAME ]
+          [ mode { ipip | gre | sit | isatap | vti } ] [ remote ADDR ] [ local ADDR ]
+          [ [i|o]seq ] [ [i|o]key KEY ] [ [i|o]csum ]
+          [ prl-default ADDR ] [ prl-nodefault ADDR ] [ prl-delete ADDR ]
+          [ 6rd-prefix ADDR ] [ 6rd-relay_prefix ADDR ] [ 6rd-reset ]
+          [ ttl TTL ] [ tos TOS ] [ [no]pmtudisc ] [ dev PHYS_DEV ]
+
+Where: NAME := STRING
+       ADDR := { IP_ADDRESS | any }
+       TOS  := { STRING | 00..ff | inherit | inherit/STRING | inherit/00..ff }
+       TTL  := { 1..255 | inherit }
+       KEY  := { DOTTED_QUAD | NUMBER }
+
+```
+根据命令可以看到linux原生支持5种L3隧道，这里我们只做ipip测试，因为kubernetes的CNI网络插件calico支持ipip模式。所谓的ipip，就是在IPv4报文的基础上封装一个IPv4报文。
+
+# 测试ipip隧道
+以下测试在centos8进行，创建两个namespace来做测试。
+
+创建namespace
+```
+# ip netns add ns1
+# ip netns add ns2
+```
+
+创建两队veth pair，按照实验环境图将一端插入创建的namespace下。
+```
+# ip link add v1 type veth peer name v1_p
+# ip link add v2 type veth peer name v2_p
+# ip link set v1 netns ns1
+# ip link set v2 netns ns2
+```
+
+给veth pair两端配置ip。
+```
+# ip addr add 10.10.10.1/24 dev v1_p
+# ip link set v1_p up
+# ip addr add 10.10.20.1/24 dev v2_p
+# ip link set v2_p up
+
+# ip addr add 10.10.10.1/24 dev v1_p
+# ip link set v1_p up
+# ip addr add 10.10.10.2/24 dev v2_p
+# ip link set v2_p up
+```
+
+给两个namespace添加静态路由。
+```
+# ip netns exec ns1 route add -net 10.10.20.0 netmask 255.255.255.0 gw 10.10.10.1
+# ip netns exec ns2 route add -net 10.10.10.0 netmask 255.255.255.0 gw 10.10.20.1
+# ip netns exec ns1 route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+10.10.10.0      0.0.0.0         255.255.255.0   U     0      0        0 v1
+10.10.20.0      10.10.10.1      255.255.255.0   UG    0      0        0 v1
+# ip netns exec ns2 route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+10.10.10.0      10.10.20.1      255.255.255.0   UG    0      0        0 v2
+10.10.20.0      0.0.0.0         255.255.255.0   U     0      0        0 v2
+# 
+
+```
+
+开启路由转发功能，确认v1和v2可以通信。
+```
+# echo 1 >/proc/sys/net/ipv4/ip_forward
+# ip netns exec ns2 ping -c 1 10.10.10.2
+PING 10.10.10.2 (10.10.10.2) 56(84) bytes of data.
+64 bytes from 10.10.10.2: icmp_seq=1 ttl=63 time=0.100 ms
+
+--- 10.10.10.2 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.100/0.100/0.100/0.000 ms
+```
+
+在两个namespace里分别创建tun设备和ipip隧道。
+```
+# ip netns exec ns1 ip tunnel add tun1 mode ipip remote 10.10.20.2 local 10.10.10.2
+# ip netns exec ns1 ip link set tun1 up
+# ip netns exec ns1 ip addr add 10.10.100.1 peer 10.10.200.1 dev tun1
+# ip netns exec ns2 ip tunnel add tun1 mode ipip remote 10.10.10.2 local 10.10.20.2
+# ip netns exec ns2 ip link set tun1 up
+# ip netns exec ns2 ip addr add 10.10.200.1 peer 10.10.100.1 dev tun1
+```
+
+查看路由变化，测试联通性，并抓包分析。
+```
+# ip netns exec ns2 route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+10.10.10.0      10.10.20.1      255.255.255.0   UG    0      0        0 v2
+10.10.20.0      0.0.0.0         255.255.255.0   U     0      0        0 v2
+10.10.100.1     0.0.0.0         255.255.255.255 UH    0      0        0 tun1
+# ip netns exec ns1 route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+10.10.10.0      0.0.0.0         255.255.255.0   U     0      0        0 v1
+10.10.20.0      10.10.10.1      255.255.255.0   UG    0      0        0 v1
+10.10.200.1     0.0.0.0         255.255.255.255 UH    0      0        0 tun1
+# ip netns exec ns2 ping 10.10.100.1 -c 1
+PING 10.10.100.1 (10.10.100.1) 56(84) bytes of data.
+64 bytes from 10.10.100.1: icmp_seq=1 ttl=64 time=0.223 ms
+
+--- 10.10.100.1 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.223/0.223/0.223/0.000 ms
+```
+
+根据抓包结果可以看到在原始的IP包外层又包了一个IP头，外层协议显示为IPIP协议。
+外层包大小为64(ping包)+20(内层IP头)+20(外层IP头)=104字节。
+
+![ipip抓包分析]({{ site.url }}/assets/network/ipip_cap.jpg "抓包分析")
