@@ -73,6 +73,9 @@ ping通之后，可以发现学到了对端的mac地址。
 
 
 # 多播模式的vxlan
+## 实验环境
+![vxlan多播实验环境]({{ site.url }}/assets/network/vxlan_multicast.jpg "vxlan多播")
+
 创建两个namespace，创建一堆veth pair设备，将两端分别插入两个namespace，并确认连通性。
 ```
 # ip netns add ns1
