@@ -1,0 +1,195 @@
+---
+layout: post
+title:  "kubernetes nfs挂载问题排除"
+date:   2019-12-03 10:51:00 +0800
+
+---
+# 问题现象
+创建带pvc的pod落在某一台node节点上的时候一直处于ContainerCreating状态。
+```
+# kubectl get po --all-namespaces -o wide | grep ContainerCreating
+ns-5c8b7483c7ce9   ws-5de0e95f44dcc-78b8855d87-nnmj4                   0/1     ContainerCreating   0          2d19h   <none>          node003    <none>           <none>
+ns-5c8b7483c7ce9   ws-5de0f02c82720-87cfbdc4f-n6f92                    0/1     ContainerCreating   0          2d19h   <none>          node003    <none>           <none>
+ns-5c8b7483c7ce9   ws-5de0fe51c0c55-7c5bc9bc94-sqh8p                   0/1     ContainerCreating   0          2d18h   <none>          node003    <none>           <none>
+ns-5c8b7483c7ce9   ws-5de488dbb8566-79ff9db5f7-t542z                   0/1     ContainerCreating   0          114m    <none>          node003    <none>           <none>
+ns-5c8b7483c7ce9   ws-5de489ce8477e-64f9599bb6-jmp64                   0/1     ContainerCreating   0          110m    <none>          node003    <none>           <none>
+```
+
+# 问题排除
+### 察看pod状态
+```
+# kubectl -n ns-5c8b7483c7ce9 describe po  ws-5de488dbb8566-79ff9db5f7-t542z
+Name:               ws-5de488dbb8566-79ff9db5f7-t542z
+Namespace:          ns-5c8b7483c7ce9
+Priority:           0
+......
+Volumes:
+  code-data:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  ws-5de488dbb8566
+    ReadOnly:   false
+    ......
+QoS Class:       Burstable
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:
+  Type     Reason       Age                    From                      Message
+  ----     ------       ----                   ----                      -------
+  Warning  FailedMount  2m12s (x50 over 113m)  kubelet, node003  Unable to mount volumes for pod "ws-5de488dbb8566-79ff9db5f7-t542z_ns-5c8b7483c7ce9(518b2f4b-14b6-11ea-be44-525400436269)": timeout expired waiting for volumes to attach or mount for pod "ns-5c8b7483c7ce9"/"ws-5de488dbb8566-79ff9db5f7-t542z". list of unmounted volumes=[code-data]. list of unattached volumes=[code-data envs-volume default-token-swdgb]
+
+```
+
+因为落在其他节点上的pod可以正常创建，所以创建失败的node节点，尝试手动mount测试，发现mount不上。通过netstat命令发现nfs client一直尝试和nfs server建立链接，但是失败了。
+```
+$ sudo mkdir -p /tmp/test 
+$ sudo timeout 30 mount -r -v -t nfs 192.168.1.100:/data1/k8sdev/hl/ /tmp/test/
+mount.nfs: timeout set for Mon Dec  2 14:35:41 2019
+mount.nfs: trying text-based options 'vers=4.2,addr=192.168.1.100,clientaddr=192.168.0.3'
+$ ll /tmp/test/
+total 12
+drwxr-xr-x  2 root root 4096 Dec  2 19:57 ./
+drwxrwxrwt 11 root root 4096 Dec  2 20:01 ../
+$ ping 192.168.1.100
+PING 192.168.1.100 (192.168.1.100) 56(84) bytes of data.
+64 bytes from 192.168.1.100: icmp_seq=1 ttl=64 time=0.312 ms
+
+$ netstat -alnp | grep 168.1.7
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      0 192.168.0.3:1023       192.168.100.7:2049        ESTABLISHED -                   
+$ netstat -alnp | grep 168.1.7
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+$ netstat -alnp | grep 168.1.7
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+$ netstat -alnp | grep 168.1.7
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      1 192.168.0.3:1023       192.168.100.7:2049        FIN_WAIT1   -                   
+$ netstat -alnp | grep 168.1.7
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+```
+
+### 登录server端继续确认。
+```
+# netstat -alnp | grep 192.168.0
+tcp        0      0 192.168.100.7:2049        192.168.0.17:850       ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.15:718       ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.5:933        ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.9:758        ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.14:908       ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.16:961       ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.13:687       ESTABLISHED -                   
+tcp        0      0 192.168.100.7:2049        192.168.0.10:768       ESTABLISHED -
+
+# dmesg | tail -n 10
+[38173553.880251] RPC request reserved 84 but used 268
+[38173553.881515] RPC request reserved 84 but used 268
+[38173553.882743] RPC request reserved 84 but used 268
+[38173553.883915] RPC request reserved 84 but used 268
+[38173553.885111] RPC request reserved 84 but used 268
+[38173553.886353] RPC request reserved 84 but used 268
+[38173553.887558] RPC request reserved 84 but used 268
+[38173553.888743] RPC request reserved 84 but used 268
+[38173553.890032] RPC request reserved 84 but used 268
+[38173553.891273] RPC request reserved 84 but used 268
+# tail -n 20 /var/log/messages
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:09 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:14 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:14 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:14 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:14 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:17 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:17 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:17 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:18 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+Dec  3 11:21:18 VM_1_7_centos kernel: RPC request reserved 84 but used 268
+```
+nfs用到了rpcbind服务，看来这和无法挂载的问题有关，直接拿到错误日志救助google了。
+
+
+找了半天发现这是nfs的bug，有两种解决方案，一是升级内核，另外一直是采用规避手段。
+在现网升级内核不合适，而且有人报出升级内核之后还是有同样的问题。所以我们暂时先规避。
+
+https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1785788
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1552037 (这个问题的commment14给出了规避手段)
+
+https://bugs.centos.org/view.php?id=15218
+
+### 验证规避手段
+先在出问题的机器上手动执行mount，指定版本4.0来连接。确认能够挂载成功。看到在nfs服务器上的b.txt文件了。
+```
+$ sudo timeout 30 mount -v -t nfs -o vers=4.0 192.168.100.7:/data1/k8sdev/hl/ /tmp/test/
+mount.nfs: timeout set for Mon Dec  2 20:03:27 2019
+mount.nfs: trying text-based options 'vers=4.0,addr=192.168.100.7,clientaddr=192.168.0.3'
+$ ll /tmp/test/
+total 12
+drwxr-xr-x  2 root root 4096 Dec  2 19:57 ./
+drwxrwxrwt 11 root root 4096 Dec  2 20:01 ../
+-rw-r--r--  1 root root    2 Dec  2 19:57 b.txt
+```
+
+### 在kubernetes集群创建pod测试
+```
+# cat > nfsmount.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-ssd 
+  resources:
+    requests:
+      storage: 1Gi
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mypod
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: node003
+  containers:
+    - name: myfrontend
+      image: nginx
+      volumeMounts:
+      - mountPath: "/var/www/html"
+        name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: myclaim
+EOF
+
+# kubectl create -f nfsmount.yaml 
+persistentvolumeclaim/myclaim created
+pod/mypod created
+
+# kubectl get po mypod
+NAME    READY   STATUS    RESTARTS   AGE
+mypod   1/1     Running   0          22s
+```
+至此集群内已经可以正常在node003上创建pod了。
+
+### 后续阅读
+多个版本之间（主要是4和4.1/4.2）的功能/性能差异？替换版本后有啥影响？(https://zh.wikipedia.org/wiki/%E7%BD%91%E7%BB%9C%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F)
+https://tools.ietf.org/html/rfc5661
+
+涉及内核的bug还是没能力修复～
+
