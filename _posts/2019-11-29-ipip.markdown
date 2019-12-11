@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "ipip实验"
+title:  "ipip实践"
 date:   2019-11-29 16:19:00 +0800
 
 ---

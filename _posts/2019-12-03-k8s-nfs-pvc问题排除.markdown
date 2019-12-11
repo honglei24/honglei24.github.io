@@ -15,7 +15,7 @@ ns-5c8b7483c7ce9   ws-5de488dbb8566-79ff9db5f7-t542z                   0/1     C
 ns-5c8b7483c7ce9   ws-5de489ce8477e-64f9599bb6-jmp64                   0/1     ContainerCreating   0          110m    <none>          node003    <none>           <none>
 ```
 
-# 问题排除
+# 问题排查
 ### 察看pod状态
 ```
 # kubectl -n ns-5c8b7483c7ce9 describe po  ws-5de488dbb8566-79ff9db5f7-t542z
@@ -188,7 +188,8 @@ mypod   1/1     Running   0          22s
 至此集群内已经可以正常在node003上创建pod了。
 
 ### 后续阅读
-多个版本之间（主要是4和4.1/4.2）的功能/性能差异？替换版本后有啥影响？(https://zh.wikipedia.org/wiki/%E7%BD%91%E7%BB%9C%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F)
+多个版本之间（主要是4和4.1/4.2）的功能/性能差异？替换版本后有啥影响？
+https://zh.wikipedia.org/wiki/%E7%BD%91%E7%BB%9C%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F
 https://tools.ietf.org/html/rfc5661
 
 涉及内核的bug还是没能力修复～
