@@ -9,10 +9,10 @@ categories: kubernetes prometheus helm
 # Helm部署
 ```
 # export VERSION="v2.14.0"
-# mkdir -pv helm && cd helm
+# mkdir -p /root/helm && cd /root/helm
 # wget https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz
 # tar xf helm-${VERSION}-linux-amd64.tar.gz
-# sudo mv linux-amd64/helm /usr/local/bin
+# mv linux-amd64/helm /usr/local/bin
 # rm -rf linux-amd64
 
 # helm init --upgrade -i registry.cn-hangzhou.aliyuncs.com/google_containers/tiller:${VERSION} --stable-repo-url https://kubernetes.oss-cn-hangzhou.aliyuncs.com/charts
@@ -98,3 +98,50 @@ grafana admin用户密码获取
 [kubernetes-cluster-monitoring-via-prometheus_rev1.json](https://github.com/honglei24/honglei24.github.io/tree/master/appendix/kubernetes/prometheus/kubernetes-cluster-monitoring-via-prometheus_rev1.json)
 
 prometheus容量规划。[prometheus_helm.xlsx](https://github.com/honglei24/honglei24.github.io/tree/master/appendix/kubernetes/prometheus/prometheus_helm.xlsx)
+
+
+# nginx-ingress配置
+```
+# helm fetch apphub/nginx-ingress
+# cat > values.yaml <<EOF
+controller:
+  service:
+    type: NodePort
+    nodePorts:
+      http: 32080
+      https: 32443
+      tcp:
+        8080: 32808
+EOF 
+
+# helm install nginx-ingress-1.25.0.tgz -f values.yaml --name nginx-ingress
+```
+
+创建grafana ingress
+```
+# cat > grafana_ingress.yaml <<EOF
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  name: grafana
+spec:
+  rules:
+   - host: grafana.test.com
+     http:
+      paths:
+      - path: /
+        backend:
+          serviceName: grafana
+          servicePort: 80
+EOF
+
+# kubectl create -f grafana_ingress.yaml
+```
+
+在本地hosts文件里追加一行
+```
+echo "172.20.3.142 grafana.test.com" >>/etc/hosts
+```
+在浏览器里访问http://grafana.test.com:32080/，即可访问grafana，然后添加数据源prometheus-server，导入对应的dashboard(kubernetes-cluster-monitoring-via-prometheus_rev1.json),就可以查看集群的资源使用状况了。

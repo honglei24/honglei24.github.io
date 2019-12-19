@@ -77,7 +77,7 @@ EOF
 所以 controller-manager 需要使用 rbd 命令，
 由于官方controller-manager镜像里没有rbd命令，
 如果没使用如下方式会报错无法成功创建pvc，
-相关 issue: https://github.com/kubernetes/kubernetes/issues/38923。
+相关 issue: https://github.com/kubernetes/kubernetes/issues/38923。</B>
 
 ```
 # cat > 02_external-storage-rbd-provisioner.yaml <EOF
