@@ -2,7 +2,7 @@
 layout: post
 title:  "yum/apt/dpkg 常用命令"
 date:   2019-12-18 15:02:00 +0800
-
+categories: linux
 ---
 
 1、centos/redhat下查看某个文件或命令属于哪个rpm包：

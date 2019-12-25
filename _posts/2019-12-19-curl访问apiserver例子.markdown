@@ -2,7 +2,7 @@
 layout: post
 title:  "curl访问kube-apiserver"
 date:   2019-12-19 09:08:00 +0800
-categories: kubernetes apiserver
+categories: kubernetes
 ---
 
 ```

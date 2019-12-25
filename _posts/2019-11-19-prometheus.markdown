@@ -2,7 +2,7 @@
 layout: post
 title:  "利用helm在k8s集群部署prometheus+grafana"
 date:   2019-11-19 15.24:18 +0800
-categories: kubernetes prometheus helm
+categories: kubernetes
 ---
 
 **以下所有命令行操作都在master节点执行**

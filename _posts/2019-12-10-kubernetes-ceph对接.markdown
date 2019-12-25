@@ -2,7 +2,7 @@
 layout: post
 title:  "kubernetes ceph对接"
 date:   2019-12-10 18:18:00 +0800
-
+categories: kubernetes
 ---
 
 本文介绍了kubernetes集群中使用使用Ceph RBD的方法。

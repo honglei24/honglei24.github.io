@@ -2,7 +2,7 @@
 layout: post
 title:  "性能分析学习笔记CPU"
 date:   2019-12-16 18:57:00 +0800
-
+categories: 性能分析
 ---
 
 ## 平均负载

@@ -2,7 +2,7 @@
 layout: post
 title:  "vxlan实践"
 date:   2019-11-27 19:09:00 +0800
-categories: network vxlan
+categories: network
 ---
 # 名词解释
 VXLAN(Virtual eXtensible LAN, 虚拟可扩展的局域网)，是一直overlay技术，通过三层网络搭建虚拟的二层网络。

@@ -2,7 +2,7 @@
 layout: post
 title:  "kubernetes nfs挂载问题排除"
 date:   2019-12-03 10:51:00 +0800
-
+categories: kubernetes
 ---
 # 问题现象
 创建带pvc的pod落在某一台node节点上的时候一直处于ContainerCreating状态。

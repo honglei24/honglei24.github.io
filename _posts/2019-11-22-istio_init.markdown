@@ -2,7 +2,7 @@
 layout: post
 title:  "利用helm在k8s集群部署istio"
 date:   2019-11-22 18:19:00 +0800
-categories: kubernetes istio helm
+categories: kubernetes
 ---
 
 **以下所有命令行操作都在master节点执行**

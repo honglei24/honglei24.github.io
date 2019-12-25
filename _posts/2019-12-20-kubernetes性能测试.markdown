@@ -12,10 +12,10 @@ https://github.com/kubernetes/perf-tests/。
 下面主要说明clusterloader2的用法。
 
 ## 编译
-前提需要预先安装go,这里省略。本次测试用的go-1.12.12
+前提需要预先安装go,这里省略。本次测试用的go1.13.5
 ```
 $ go version
-go version go1.12.12 linux/amd64
+go version go1.13.5 linux/amd64
 
 $ cd $(go env GOPATH)/src/k8s.io/
 $ git clone https://github.com/kubernetes/perf-tests.git
@@ -38,10 +38,12 @@ KUBE_CONFIG=${HOME}/.kube/config
 PROVIDER='local'
 
 # SSH config for metrics' collection
+# export KUBE_SSH_KEY_PATH=$HOME/.ssh/id_rsa  # 使用kubemark的时候需要开启，kubemark会使用该环境变量
+# export KUBEMARK_SSH_KEY=id_rsa # 使用kubemark的时候需要开启，kubemark会使用该环境变量
 KUBE_SSH_KEY_PATH=$HOME/.ssh/id_rsa
 KUBEMARK_SSH_KEY=$HOME/.ssh/id_rsa
 MASTER_SSH_IP=192.168.122.169
-MASTER_SSH_USER_NAME=master
+MASTER_NAME=master
 
 # Clusterloader2 testing strategy config paths
 # It supports setting up multiple test strategy. Each testing strategy is individual and serial.
@@ -56,9 +58,10 @@ REPORT_DIR='./reports'
 LOG_FILE='logs/tmp.log'
 EOF
 
+$ source clusterload.conf 
 $ mkdir -p logs 
 $ touch logs/tmp.log
-$ $CLUSTERLOADER_BIN --kubeconfig=$KUBE_CONFIG     --provider=$PROVIDER     --masterip=$MASTER_SSH_IP --mastername=$MASTER_SSH_USER_NAME     --testconfig=$TEST_CONFIG     --report-dir=$REPORT_DIR     --alsologtostderr 2>&1 | tee $LOG_FILE
+$ $CLUSTERLOADER_BIN --kubeconfig=$KUBE_CONFIG --provider=$PROVIDER --masterip=$MASTER_SSH_IP --mastername=$MASTER_NAME     --testconfig=$TEST_CONFIG --report-dir=$REPORT_DIR --alsologtostderr 2>&1 | tee $LOG_FILE
 ```
 
 执行完成后就在logs/tmp.log可一看到报告。内容如下：
@@ -92,6 +95,8 @@ index ada4169d..1e0c770b 100644
 +       return e.sshEtcdMetrics("curl http://localhost:2381/metrics", host, provider)
  }
 ```
+
+* 用clusterloader2/testing/density/config.yaml来测试真实集群的时候，pod的默认的内存指定为10M，cpu为100m，如果没有足够的容量的话，在做饱和度测试的时候，很容易因为资源不足而导致测试失败。
 
 ## 思考
 * clusterloader2的测试可选配置还是很多的，具体可以参考clusterloader2/testing目录下定义的各种yaml文件。

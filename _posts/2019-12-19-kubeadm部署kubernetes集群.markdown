@@ -2,7 +2,7 @@
 layout: post
 title:  "kubeadm 部署kubernetes集群"
 date:   2019-12-20 09:00:00 +0800
-
+categories: kubernetes
 ---
 
 简要记录kubeadm部署kubernetes的步骤
@@ -42,9 +42,9 @@ $ kubeadm token create --print-join-command
 
 ## 部署flannel
 ```
-$ wget https://github.com/coreos/flannel/blob/master/Documentation/kube-flannel.yml
-$ sed -i 's/quay.io/quay.azk8s.cn/g' kube-flannel.yaml
-$ kubectl create -f kube-flannel.yaml
+$ wget https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+$ sed -i 's/quay.io/quay.azk8s.cn/g' kube-flannel.yml
+$ kubectl create -f kube-flannel.yml
 ```
 
 ## 部署node节点

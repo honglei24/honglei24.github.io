@@ -2,7 +2,7 @@
 layout: post
 title:  "kubespray从零部署kubernetes集群"
 date:   2019-12-17 17:46:00 +0800
-
+categories: kubernetes
 ---
 
 ## 从零部署kubernetes集群

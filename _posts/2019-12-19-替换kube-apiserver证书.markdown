@@ -2,7 +2,7 @@
 layout: post
 title:  "手动替换kube-apiserver证书"
 date:   2019-12-19 16:59:00 +0800
-categories: kubernetes apiserver
+categories: kubernetes
 ---
 ## 背景
 用kubespray部署kubernetes集群之后，需要在apiserver前加一个负载均衡器。

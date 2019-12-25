@@ -1,0 +1,197 @@
+---
+layout: post
+title:  "kubemark模拟大规模集群"
+date:   2019-12-19 16:59:00 +0800
+categories: kubernetes
+---
+
+## 背景
+资源有限的情况下，想了解一下随着规模扩大，kubernetes集群的性能的话，我们可以利用kubemark来模拟大规模集群。                                                                               
+>Kubemark is a performance testing tool which allows users to run experiments on simulated clusters. The primary use case is scalability testing, as simulated clusters can be much bigger than the real ones. The objective is to expose problems with the master components (API server, controller manager or scheduler) that appear only on bigger clusters (e.g. small memory leaks).
+
+## 前提
+准备一个kubernetes集群，部署可以参照https://honglei24.github.io/kubernetes/2019/12/20/kubeadm%E9%83%A8%E7%BD%B2kubernetes%E9%9B%86%E7%BE%A4/
+
+## 编译
+前提是安装好go环境，本次测试用的是go1.13.5
+```
+$ go version
+go version go1.13.5 linux/amd64
+
+$ cd $(go env GOPATH)/src/k8s.io/
+$ git clone https://github.com/kubernetes/kubernetes.git
+
+$ git checkout release-1.17  # 因为我的集群是1.17,所以选用对应的版本。
+
+$ make kubemark                                                  
+
+$ cp _output/bin/kubemark cluster/images/kubemark/
+$ cd cluster/images/kubemark/
+$ IMAGE_TAG=v1.17.0 make build
+
+$ sudo docker images staging-k8s.gcr.io/kubemark:v1.17.0
+REPOSITORY                    TAG                 IMAGE ID            CREATED             SIZE
+staging-k8s.gcr.io/kubemark   v1.17.0             904d8ec0a2ff        46 hours ago        239MB
+
+```
+经过编译和镜像打包步骤之后，本地会生成一个kubemark镜像，我们可以通过docker save和docker load命令，将镜像分发到kubernetes集群的负载节点。
+
+创建部署depoyment用的文件。
+```
+$ cd ~/worker
+$ cat > hollow-node.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hollow-node
+  namespace: kubemark
+  labels:
+    name: hollow-node
+spec:
+  replicas: 60
+  selector:
+    matchLabels:
+      name: hollow-node
+  template:
+    metadata:
+      labels:
+        name: hollow-node
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/node: "" 
+        role: real
+      tolerations:
+      - key: "role"
+        operator: "Equal"
+        value: "real"
+        effect: "NoSchedule"
+      initContainers:
+      - name: init-inotify-limit
+        image: busybox
+        command: ['sysctl', '-w', 'fs.inotify.max_user_instances=200']
+        securityContext:
+          privileged: true
+      volumes:
+      - name: kubeconfig-volume
+        secret:
+          secretName: kubeconfig
+      containers:
+      - name: hollow-kubelet
+        image: staging-k8s.gcr.io/kubemark:v1.17.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4194
+        - containerPort: 10250
+        - containerPort: 10255
+        env:
+        - name: CONTENT_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: node-configmap
+              key: content.type
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        command:
+        - /bin/sh
+        - -c
+        - /kubemark --morph=kubelet --name=$(NODE_NAME) --kubeconfig=/kubeconfig/kubelet.kubeconfig $(CONTENT_TYPE) --alsologtostderr --v=2
+        volumeMounts:
+        - name: kubeconfig-volume
+          mountPath: /kubeconfig
+          readOnly: true
+        securityContext:
+            privileged: true
+      - name: hollow-proxy
+        image: staging-k8s.gcr.io/kubemark:v1.17.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: CONTENT_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: node-configmap
+              key: content.type
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        command:
+        - /bin/sh
+        - -c
+        - /kubemark --morph=proxy --name=$(NODE_NAME) --use-real-proxier=false --kubeconfig=/kubeconfig/kubeproxy.kubeconfig $(CONTENT_TYPE) --alsologtostderr --v=2
+        volumeMounts:
+        - name: kubeconfig-volume
+          mountPath: /kubeconfig
+          readOnly: true
+EOF
+
+# 给真实节点打上标签和污点, 标签是为了将kubemark调动到对应的节点，打污点的目的是为了防止压力测试的时候，将pod调度到真实节点。
+$ kubectl get no -l node-role.kubernetes.io/node --no-headers | awk '{print $1}' | xargs -i kubectl label nodes {} role=real
+$ kubectl get no -l node-role.kubernetes.io/node --no-headers | awk '{print $1}' | xargs -i kubectl taint nodes {} role=real:NoSchedule
+
+$ kubectl create -f hollow-node.yaml
+```
+
+创建完成后可以查看节点状况，会发现多出了很多模拟节点。
+```
+$ kubectl get no | grep hollow
+hollow-node-5976d94bbd-2l6v7   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-4j8sw   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-556dz   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-5bvj7   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-5fhxs   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-79k6r   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-8bq8h   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-8lh6d   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-8rjc5   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-95pdx   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+hollow-node-5976d94bbd-9pl45   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
+```
+
+有了模拟节点之后，就可以利用clusterload来测试大规模场景下的集群。
+```
+$ cat > clusterload.conf <<EOF
+CLUSTERLOADER_BIN=/home/hl/go/src/k8s.io/perf-tests/clusterloader2/clusterloader
+# kube config for kubernetes api
+KUBE_CONFIG=${HOME}/.kube/config
+
+# Provider setting
+# Supported provider for xiaomi: local, kubemark, lvm-local, lvm-kubemark
+PROVIDER='kubemark'  # 此处制定kubemark
+#PROVIDER='local'
+
+# SSH config for metrics' collection
+export KUBE_SSH_KEY_PATH=$HOME/.ssh/id_rsa  # 使用kubemark的时候需要开启，kubemark会使用该环境变量
+export KUBEMARK_SSH_KEY=id_rsa # 使用kubemark的时候需要开启，kubemark会使用该环境变量
+export KUBE_SSH_USER=hl
+MASTER_SSH_IP=192.168.122.169
+MASTER_SSH_USER_NAME=master
+
+# Clusterloader2 testing strategy config paths
+# It supports setting up multiple test strategy. Each testing strategy is individual and serial.
+export TEST_CONFIG='/home/hl/go/src/k8s.io/perf-tests/clusterloader2/testing/density/config.yaml'
+
+# Clusterloader2 testing override config paths
+# It supports setting up multiple override config files. All of override config files will be applied to each testing strategy.
+# OVERRIDE_CONFIG='testing/density/override/200-nodes.yaml'
+
+# Log config
+REPORT_DIR='./reports'
+LOG_FILE='logs/tmp.log'
+EOF
+
+$ source clusterload.conf 
+$ mkdir -p logs 
+$ touch logs/tmp.log
+$ $CLUSTERLOADER_BIN --kubeconfig=$KUBE_CONFIG --provider=$PROVIDER --masterip=$MASTER_SSH_IP --mastername=$MASTER_NAME     --testconfig=$TEST_CONFIG --report-dir=$REPORT_DIR --alsologtostderr 2>&1 | tee $LOG_FILE
+```
+
+正常执行完成后屏幕上会输出如下内容：
+```
+I1225 18:24:52.021574   18877 clusterloader.go:187] --------------------------------------------------------------------------------
+I1225 18:24:52.021581   18877 clusterloader.go:188] Test Finished
+I1225 18:24:52.021587   18877 clusterloader.go:189]   Test: /home/hl/go/src/k8s.io/perf-tests/clusterloader2/testing/density/config.yaml
+I1225 18:24:52.021592   18877 clusterloader.go:190]   Status: Success
+I1225 18:24:52.021597   18877 clusterloader.go:194] --------------------------------------------------------------------------------
+```

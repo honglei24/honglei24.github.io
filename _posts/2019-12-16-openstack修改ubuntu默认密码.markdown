@@ -2,7 +2,7 @@
 layout: post
 title:  "openstack修改ubuntu默认密码"
 date:   2019-12-17 15:00:00 +0800
-
+categories: openstack
 ---
 
 * 镜像里安装clout-init
