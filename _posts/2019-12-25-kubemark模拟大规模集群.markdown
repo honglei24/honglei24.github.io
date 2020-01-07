@@ -10,7 +10,7 @@ categories: kubernetes
 >Kubemark is a performance testing tool which allows users to run experiments on simulated clusters. The primary use case is scalability testing, as simulated clusters can be much bigger than the real ones. The objective is to expose problems with the master components (API server, controller manager or scheduler) that appear only on bigger clusters (e.g. small memory leaks).
 
 ## 前提
-准备一个kubernetes集群，部署可以参照https://honglei24.github.io/kubernetes/2019/12/20/kubeadm%E9%83%A8%E7%BD%B2kubernetes%E9%9B%86%E7%BE%A4/
+准备一个kubernetes集群，部署可以参照[kubeadm部署kubernetes集群](https://honglei24.github.io/kubernetes/2019/12/20/kubeadm%E9%83%A8%E7%BD%B2kubernetes%E9%9B%86%E7%BE%A4)
 
 ## 编译
 前提是安装好go环境，本次测试用的是go1.13.5
@@ -36,6 +36,7 @@ staging-k8s.gcr.io/kubemark   v1.17.0             904d8ec0a2ff        46 hours a
 ```
 经过编译和镜像打包步骤之后，本地会生成一个kubemark镜像，我们可以通过docker save和docker load命令，将镜像分发到kubernetes集群的负载节点。
 
+## 部署模拟节点
 创建部署depoyment用的文件。
 ```
 $ cd ~/worker
@@ -133,6 +134,7 @@ $ kubectl get no -l node-role.kubernetes.io/node --no-headers | awk '{print $1}'
 $ kubectl create -f hollow-node.yaml
 ```
 
+## 确认模拟节点
 创建完成后可以查看节点状况，会发现多出了很多模拟节点。
 ```
 $ kubectl get no | grep hollow
@@ -149,6 +151,7 @@ hollow-node-5976d94bbd-95pdx   Ready    <none>   8h      v1.17.1-beta.0.17+17d79
 hollow-node-5976d94bbd-9pl45   Ready    <none>   8h      v1.17.1-beta.0.17+17d7976c6a38a3-dirty
 ```
 
+## 使用模拟节点来做测试
 有了模拟节点之后，就可以利用clusterload来测试大规模场景下的集群。
 ```
 $ cat > clusterload.conf <<EOF

@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "kubeadm 部署kubernetes集群"
+title:  "kubeadm部署kubernetes集群"
 date:   2019-12-20 09:00:00 +0800
 categories: kubernetes
 ---
@@ -60,3 +60,6 @@ $ sudo systemctl enable docker
 $ sudo kubeadm join master:6443 --token 6dg13o.fyw6jf7ynt7gy40q --discovery-token-ca-cert-hash sha256:4bb3f1d889b0eb9799652c33464ebe747ef74b7199a41646a5f66cf068d2c3bb
 
 ```
+
+## 查看pod分布情况
+kubectl get po --all-namespaces -o wide --no-headers | grep Running | awk '{a[$8]++}END{for(i in a){print i, a[i]}}' | sort -n -k 2
