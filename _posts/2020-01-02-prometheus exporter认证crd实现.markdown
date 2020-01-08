@@ -4,6 +4,9 @@ title:  "prometheus exporter认证crd实现"
 date:   2020-01-02 15:16:00 +0800
 categories: kubernetes
 ---
+## 背景
+
+
 
 ```
 cd /home/hl/go/src/github.com
