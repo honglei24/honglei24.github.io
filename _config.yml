@@ -59,10 +59,10 @@ kramdown:
 
 
 # Disqus settings
-disqus_username: hux
+disqus_username: honglei
 
 # Netease settings
-netease_comment: false
+netease_comment: true
 
 
 
