@@ -31,6 +31,15 @@ Reconcile 逻辑需要幂等；
 该CRD只实现了nginx注入，但是nginx注入之后需要自动修改配置，这一块还需要完善。
 同时prometheus需要加上对应的认证配置。
 
+## 碰到的问题
+1. 删除crd失败
+
+参考https://stackoverflow.com/questions/52009124/not-able-to-completely-remove-kubernetes-customresource和https://github.com/kubernetes/kubernetes/issues/60538解决
+```
+kubectl patch crd/crontabs.stable.example.com -p '{"metadata":{"finalizers":[]}}' --type=merge
+kubectl delete crd ${crd_name}
+```
+
 ## 参考
 https://blog.hdls.me/15708754600835.html
 https://www.jianshu.com/p/edd9c17d8c8b
