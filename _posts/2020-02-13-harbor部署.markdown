@@ -1,0 +1,27 @@
+---
+layout: post
+title:  "harbor部署"
+date:   2020-02-13 22：00:00 +0800
+categories: harbor
+---
+## 背景
+部署参照https://github.com/honglei24/harbor_install。
+
+## 碰到的问题：
+1. 使用外部的postgreSQL数据库，日志出现database “registry” does not exist（）的错误信息。
+```
+# 1. 进入数据库 Pod
+$ kubectl exec -it harbor-harbor-database-0 -n kube-ops /bin/bash
+# 2. 连接数据库
+root [ / ]# psql --username postgres
+psql (9.6.10)
+Type "help" for help.
+# 3. 创建 registry 数据库
+postgres=# CREATE DATABASE registry ENCODING 'UTF8';
+CREATE DATABASE
+postgres=# \c registry;
+You are now connected to database "registry" as user "postgres".
+registry=# CREATE TABLE schema_migrations(version bigint not null primary key, dirty boolean not null);
+CREATE TABLE
+registry-# \quit
+```
