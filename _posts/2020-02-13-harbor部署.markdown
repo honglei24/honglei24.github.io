@@ -25,3 +25,6 @@ registry=# CREATE TABLE schema_migrations(version bigint not null primary key, d
 CREATE TABLE
 registry-# \quit
 ```
+
+2. 删除harbor镜像。
+curl -k -X DELETE -H 'Accept: text/plain' -u admin:Harbor12345  "https://test.harbor.com/api/repositories/test/nginx-384/tags/latest"
