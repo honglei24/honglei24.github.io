@@ -166,12 +166,14 @@ Event由Kubernetes的核心组件Kubelet和ControllerManager等产生，用来�
 与其他资源对象一样，Event对象也通过调用apiserver，将Event存储在etcd里。
 event默认保留事件是1小时，可以通过apiserver的event-ttl参数来配置。
 * 以下是apiserver日志中关于event调用的例子
+
 ```
 {"log":"I0324 03:11:55.353939       1 httplog.go:90] POST /api/v1/namespaces/harbor/events: (666.620288ms) 201 [kube-controller-manager/v1.17.0 (linux/amd64) kubernetes/70132b0/system:serviceaccount:kube-system:persistent-volume-binder 192.168.3.2:54368]\n","stream":"stderr","time":"2020-03-24T03:11:55.354083534Z"}
 
 ```
 
 * 以下是etcd里的Event存储示例：
+
 ```
 # etcdctl get /registry/event  --prefix --keys-only
 ......
@@ -216,6 +218,7 @@ event默认保留事件是1小时，可以通过apiserver的event-ttl参数来�
 # 审计日志
 Kubernetes 审计（Audit）提供了安全相关的时序操作记录，支持日志和 webhook 两种格式，并可以通过审计策略自定义事件类型。
 如果使用日志记录，需要在kube-apiserver的启动参数里添加如下配置项，
+
 ```
 audit-log-maxbackup=10	审计日志最大分片存储10个日志文件
 audit-log-maxsize=100	单个审计日志最大size为100MB
@@ -225,6 +228,7 @@ audit-policy-file=/etc/kubernetes/audit-policy/audit-policy.yml	审计日志配�
 ```
 
 配置好之后重启kube-apiserver,可以在/var/log/kubernetes/audit.log文件里查看具体的审计日志，典型的audit日志如下所示：
+
 ```
 {
     "annotations": {
