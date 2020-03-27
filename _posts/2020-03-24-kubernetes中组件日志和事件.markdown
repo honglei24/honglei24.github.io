@@ -13,7 +13,8 @@ categories: kubernetes 日志
 
 ## Kubernetes主要组件日志
 1. kubernetes日志等级设置为5，具体配置是在启动组件的时候加上--v=5,否则很多日志查看不到。
-2. 以下以创建deployment为例说明。使用到的yaml文件和命令如下
+2. 以下以创建deployment为例说明。使用到的yaml文件和命令如下:
+
 ```
 $ cat nginx-deployment.yaml 
 apiVersion: apps/v1
