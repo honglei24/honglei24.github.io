@@ -15,38 +15,53 @@ ingress controller用的nginx来实现的。所以问题就归结为haproxy+ngin
 
 ## haproxy获取源IP的3中方式：
 1. haproxy全透明代理.
+  
     a. haproxy配置修改
+
     b. haproxy iptables规则修改
+
     c. backend默认路由修改
+
   a和b通过修改lbaas代码实现。c需要在应用服务器上配置。
+
   https://www.cnblogs.com/Bonker/p/6814183.html
+
   https://my.oschina.net/eddylinux/blog/535043
 
 2. 利用haproxy的功能proxy_protocol
+　
     a. haproxy配置修改
-    b. 后端也需要支持proxy_protocol 
+　
+    b. 后端也需要支持proxy_protocol
+    　
     a通过修改lbaas代码实现，b需要backend支持。支持列表参考：https://www.haproxy.com/blog/haproxy/proxy-protocol/
 
 3. 利用http头X-Forwarded-For来获取源IP，只在http模式下适用，tcp模式没用，但是可以在通过在客户端请求头显示添加X-Forwarded-For来实现。
+ 　　
    haproxy的配置里的加上配置选项option forwardfor即可。现在的lbaas里使用的haproxy模板已经有了该配置，不需要额外配置。
 
 以上3种方式在下面简称为haproxy模式1，haproxy模式2，haproxy模式3。
 
 ## 利用nginx realip模块获取用户真实IP
 1. 确认当前nginx是否带有realip模块，如果没有的话需要下载合适的nginx版本，或者重新编译nginx。
+ 
 ```
 nginx -V 2>&1 | grep realip
 ```
+
 2. 修改nginx配置，在nginx配置中增加以下配置（可以在http,server或location段中增加）
+ 
 ```
 set_real_ip_from 0.0.0.0/; #真实服务器上一级代理的IP地址或者IP段,可以写多行。
 real_ip_header X-Forwarded-For;  #从哪个header头检索出要的IP地址。
 real_ip_recursive on; #递归的去除所配置中的可信IP。
 ```
+
 3. 利用上述配置本地验证了haproxy模式3+步骤2的配置可以在nginx上获取源IP。
 
 ## 修改ingress congroller配置
 1. 只需要关注compute-full-forwarded-for和use-forwarded-headers这两行。
+
 ```
 # cat > values.yaml <<EOF
 controller:
@@ -74,9 +89,11 @@ EOF
 
 # helm upgrade nginx-ingress nginx-ingress-1.25.0.tgz -f values.yaml 
 ```
+　
 如果想修改nginx.conf里的set_real_ip_from，可以通过在config段下指定proxy-real-ip-cidr来实现。
 
 2. 进入容器确认nginx配置已经修改。
+ 
 ```
 www-data@nginx-ingress-controller-hswks:/etc/nginx$ grep real_ip nginx.conf 
 	real_ip_header      X-Forwarded-For;
