@@ -1,0 +1,46 @@
+---
+layout: post
+title:  "一次EFk排错经历"
+date:   2020-04-20 10:30:00 +0800
+categories: kubernetes EFK
+---
+# 一次EFk排错经历
+
+## 部署架构
+简单描述一下我们的使用场景,由于还没有正式上线,kafka还没有用上.
+
+![部署架构]({{ site.url }}/assets/efk/arch.jpg "部署架构")
+
+## 问题描述
+在我们的环境里出现了大量的日志延迟.在kibana上显示的日志有7--8分钟的延迟.
+
+![日志延迟]({{ site.url }}/assets/efk/delay.png "日志延迟")
+
+## 排查过程
+1. 首先是想判断filebeat->logstash->es这条链路上的那个环节产生了延迟.
+   自建了一个logstash,对logstash->es这条链路做了压测.主要是用到了logstash的generator模块.
+   ```
+   input {
+        generator {
+            count => 10000000
+            message => '{"key1":"value1","key2":[1,2],"key3":{"subkey1":"subvalue1"}}'
+            codec => json
+        }
+    }
+   ```
+   
+
+    根据压测结果,发现logstash->es的吞吐量大概是10万/分钟.大于我们的日志量.
+
+    接写来自建filebeat来做测试,同样也没有发现问题.
+
+2. 查看各个节点的资源使用状况,发现logstash所在的node的iowait稍高(6%)左右.我最初以为这不是一个问题,因为关于iowait到底多高才算高,这个问题没有一个具体的数值,还应该根据具体场景来判断.
+
+    我去社区求助了一下,原来问题就在这里.
+
+    调整queue.checkpoint.writes的值之后,发现logstash所在的node的iowait降低到1%一下了.
+
+    如果有prometheus的话,还可以观察变更前后的iowait值.
+    avg(irate(node_cpu_seconds_total{mode="iowait",kubernetes_node="$node_name"}[5m])) * 100
+
+3. 
