@@ -37,10 +37,18 @@ categories: kubernetes EFK
 2. 查看各个节点的资源使用状况,发现logstash所在的node的iowait稍高(6%)左右.我最初以为这不是一个问题,因为关于iowait到底多高才算高,这个问题没有一个具体的数值,还应该根据具体场景来判断.
 
     我去社区求助了一下,原来问题就在这里.
+    https://discuss.elastic.co/t/time-delay-between-logstash-and-elasticsearch/227749
 
     调整queue.checkpoint.writes的值之后,发现logstash所在的node的iowait降低到1%一下了.
 
     如果有prometheus的话,还可以观察变更前后的iowait值.
     avg(irate(node_cpu_seconds_total{mode="iowait",kubernetes_node="$node_name"}[5m])) * 100
 
-3. 
+## 总结
+其实在做压力测试之前,已经看过iowait的值了,但是当时以为这个值没有问题.所以iowait到底多高才算高,当他成为性能瓶颈的时候就算高了.
+
+参考:
+
+    https://serverfault.com/questions/722804/what-percentage-of-iowait-is-considered-to-be-high
+
+    https://www.elastic.co/guide/en/logstash/current/performance-tuning.html
