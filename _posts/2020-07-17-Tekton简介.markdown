@@ -1,0 +1,72 @@
+---
+layout: post
+title:  "Tekton简介"
+date:   2020-07-17 16:00:00 +0800
+categories: kubernetes tekton
+---
+
+# Tekton简介
+
+Tekton 是一款功能非常强大而灵活的 CI/CD 开源的云原生框架。Tekton 的前身是 Knative 项目的 build-pipeline 项目，这个项目是为了给 build 模块增加 pipeline 的功能，但是随着不同的功能加入到 Knative build 模块中，build 模块越来越变得像一个通用的 CI/CD 系统，于是，索性将 build-pipeline 剥离出 Knative，就变成了现在的 Tekton，而 Tekton 也从此致力于提供全功能、标准化的云原生 CI/CD 解决方案。<br />
+
+<a name="wqP1q"></a>
+## 核心概念
+Tekton 为 Kubernetes 提供了多种 CRD 资源对象，可用于定义我们的流水线，主要有以下几个资源对象：
+
+- Task：表示执行命令的一系列步骤，task 里可以定义一系列的 steps，例如编译代码、构建镜像、推送镜像等，每个 step 实际由一个 Pod 执行。
+- TaskRun：task 只是定义了一个模版，taskRun 才真正代表了一次实际的运行，当然你也可以自己手动创建一个 taskRun，taskRun 创建出来之后，就会自动触发 task 描述的构建任务。
+- Pipeline：一组任务，表示一个或多个 task、PipelineResource 以及各种定义参数的集合。
+- PipelineRun：类似 task 和 taskRun 的关系，pipelineRun 也表示某一次实际运行的 pipeline，下发一个 pipelineRun CRD 实例到 Kubernetes后，同样也会触发一次 pipeline 的构建。
+- PipelineResource：表示 pipeline 输入资源，比如 github 上的源码，或者 pipeline 输出资源，例如一个容器镜像或者构建生成的 jar 包等。
+<a name="52zmX"></a>
+## 核心组件安装
+```
+$ kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+```
+
+
+<a name="4OcTe"></a>
+## CLI安装
+以下以ubuntu为例，其他发行版的安装请参照[https://tekton.dev/docs/getting-started/](https://tekton.dev/docs/getting-started/)
+```
+$ sudo apt update;sudo apt install -y gnupg
+$ sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3EFE0E0A2F2F60AA
+$ echo "deb http://ppa.launchpad.net/tektoncd/cli/ubuntu eoan main"|sudo tee /etc/apt/sources.list.d/tektoncd-ubuntu-cli.list
+$ sudo apt update && sudo apt install -y tektoncd-cli
+```
+
+<br />实例
+```
+$ cat >task-hello.yaml <<EOF
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: hello
+spec:
+  steps:
+    - name: hello
+      image: ubuntu
+      command:
+        - echo
+      args:
+        - "Hello World!"
+EOF
+
+kubectl apply -f task-hello.yaml
+
+# 利用tkn的--dry-run选项生产TaskRun文件，下面两条命令也可以何为一行tkn task start hello
+$ tkn task start hello --dry-run > taskRun-hello.yaml
+# 创建TaskRun
+$ kubectl create -f taskRun-hello.yaml
+
+# 日志查看
+$ tkn taskrun logs --last -f 
+[hello] Hello World!
+```
+
+
+<a name="P20QE"></a>
+## 参照
+
+1. [https://tekton.dev/docs/getting-started/](https://tekton.dev/docs/getting-started/)
+1. [https://www.qikqiak.com/post/create-ci-pipeline-with-tekton-1/](https://www.qikqiak.com/post/create-ci-pipeline-with-tekton-1/)
