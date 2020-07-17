@@ -1,0 +1,418 @@
+---
+layout: post
+title:  "Knative部署"
+date:   2020-07-17 15:37:53 +0800
+categories: kubernetes knative
+---
+
+# Knative部署
+
+## 前提条件
+- k8s版本：1.16.0
+- knative版本：0.15.0
+- istio版本：1.6.2
+
+## Serving组件部署
+安装serving相关的crd和核心组件
+```
+$ wget https://github.com/knative/serving/releases/download/v0.15.0/serving-crds.yaml
+$ wget https://github.com/knative/serving/releases/download/v0.15.0/serving-core.yaml
+$ kubectl apply -f serving-crds.yaml 
+$ kubectl apply -f serving-core.yaml 
+$ kubectl get all -n knative-serving 
+NAME                                    READY   STATUS    RESTARTS   AGE
+pod/activator-5c4c4469bd-p28ch          1/1     Running   0          5d19h
+pod/autoscaler-6bc94f8f6c-h77dg         1/1     Running   0          5d19h
+pod/controller-656854f5c-647qj          1/1     Running   0          5d19h
+pod/istio-webhook-5b88bcbc7d-9djts      1/1     Running   0          5d19h
+pod/networking-istio-6c76dcd97f-pk4mc   1/1     Running   0          5d19h
+pod/webhook-57948f997f-snwrv            1/1     Running   0          5d19h
+
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                              AGE
+service/activator-service   ClusterIP   10.107.74.236    <none>        9090/TCP,8008/TCP,80/TCP,81/TCP      5d19h
+service/autoscaler          ClusterIP   10.103.16.172    <none>        9090/TCP,8008/TCP,8080/TCP,443/TCP   5d19h
+service/controller          ClusterIP   10.102.200.152   <none>        9090/TCP,8008/TCP                    5d19h
+service/istio-webhook       ClusterIP   10.111.122.53    <none>        9090/TCP,8008/TCP,443/TCP            5d19h
+service/webhook             ClusterIP   10.111.181.187   <none>        9090/TCP,8008/TCP,443/TCP            5d19h
+
+NAME                               READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/activator          1/1     1            1           5d19h
+deployment.apps/autoscaler         1/1     1            1           5d19h
+deployment.apps/controller         1/1     1            1           5d19h
+deployment.apps/istio-webhook      1/1     1            1           5d19h
+deployment.apps/networking-istio   1/1     1            1           5d19h
+deployment.apps/webhook            1/1     1            1           5d19h
+
+NAME                                          DESIRED   CURRENT   READY   AGE
+replicaset.apps/activator-5c4c4469bd          1         1         1       5d19h
+replicaset.apps/activator-7fff689bcb          0         0         0       5d19h
+replicaset.apps/autoscaler-5bcff95856         0         0         0       5d19h
+replicaset.apps/autoscaler-6bc94f8f6c         1         1         1       5d19h
+replicaset.apps/controller-656854f5c          1         1         1       5d19h
+replicaset.apps/controller-bbdd78bc4          0         0         0       5d19h
+replicaset.apps/istio-webhook-5b88bcbc7d      1         1         1       5d19h
+replicaset.apps/networking-istio-6c76dcd97f   1         1         1       5d19h
+replicaset.apps/webhook-57948f997f            1         1         1       5d19h
+replicaset.apps/webhook-68bb66b676            0         0         0       5d19h
+
+NAME                                            REFERENCE              TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/activator   Deployment/activator   1%/100%   1         20        1          5d19h
+
+```
+
+<br />安装istioctl
+```
+$ curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.6.2 sh -
+$ cd istio-1.6.2/
+$ export PATH=$PWD/bin:$PATH
+$ cat << EOF > ./istio-minimal-operator.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  values:
+    global:
+      proxy:
+        autoInject: disabled
+      useMCP: false
+      # The third-party-jwt is not enabled on all k8s.
+      # See: https://istio.io/docs/ops/best-practices/security/#configure-third-party-service-account-tokens
+      jwtPolicy: first-party-jwt
+
+  addonComponents:
+    pilot:
+      enabled: true
+    prometheus:
+      enabled: false
+
+  components:
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+      - name: cluster-local-gateway
+        enabled: true
+        label:
+          istio: cluster-local-gateway
+          app: cluster-local-gateway
+        k8s:
+          service:
+            type: ClusterIP
+            ports:
+            - port: 15020
+              name: status-port
+            - port: 80
+              name: http2
+            - port: 443
+              name: https
+EOF
+
+$ istioctl manifest apply -f istio-minimal-operator.yaml --set values.gateways.istio-ingressgateway.type=NodePort
+$ kubectl -n istio-system get po
+NAME                                    READY   STATUS    RESTARTS   AGE
+cluster-local-gateway-d94fc98c6-klqk4   1/1     Running   0          5d19h
+istio-ingressgateway-6f87db8689-mbvfq   1/1     Running   0          5d19h
+istiod-6cb5dfb4d6-nrxbt                 1/1     Running   0          5d19h
+$ kubectl -n istio-system get svc
+NAME                    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                      AGE
+cluster-local-gateway   ClusterIP   10.109.39.51    <none>        15020/TCP,80/TCP,443/TCP                                     5d19h
+istio-ingressgateway    NodePort    10.98.138.124   <none>        15021:32557/TCP,80:30732/TCP,443:31438/TCP,15443:30700/TCP   5d19h
+istiod                  ClusterIP   10.105.132.37   <none>        15010/TCP,15012/TCP,443/TCP,15014/TCP,53/UDP,853/TCP         5d19h
+
+```
+
+<br />安装Knative istio控制器
+```
+$ wget https://github.com/knative/net-istio/releases/download/v0.15.0/release.yaml
+$ kubectl apply --filename release.yaml
+```
+
+<br />验证
+```bash
+$ cat >hello.yaml <<EOF
+apiVersion: serving.knative.dev/v1 # Current version of Knative
+kind: Service
+metadata:
+  name: helloworld-go # The name of the app
+  namespace: default # The namespace the app will use
+spec:
+  template:
+    spec:
+      containers:
+        #- image: gcr.io/knative-samples/helloworld-go:latest # The URL to the image of the app
+        - image: registry.cn-hangzhou.aliyuncs.com/knative-sample/simple-app:07
+          imagePullPolicy: IfNotPresent 
+          env:
+            - name: TARGET # The environment variable printed out by the sample app
+              value: "Go Sample v1"
+            - name: SIMPLE_MSG # The environment variable printed out by the sample app
+              value: "Go Sample v3"
+EOF
+
+$ kubectl create -f hello.yaml
+$ kubectl get ksvc
+NAME            URL                                        LATESTCREATED         LATESTREADY           READY   REASON
+helloworld-go   http://helloworld-go.default.example.com   helloworld-go-g9n8j   helloworld-go-g9n8j   True  
+
+$ kubectl get svc istio-ingressgateway -n istio-system 
+NAME                   TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                      AGE
+istio-ingressgateway   NodePort   10.98.138.124   <none>        15021:32557/TCP,80:30732/TCP,443:31438/TCP,15443:30700/TCP   5d19h
+
+$ curl -H "Host: helloworld-go.default.example.com" http://10.98.138.124
+<h1>Go Sample v3-v3</h1>
+```
+
+## Eventing组件部署
+安装eventing组件
+```
+$ wget https://github.com/knative/eventing/releases/download/v0.15.0/eventing.yaml
+$  kubectl apply --selector knative.dev/crd-install=true --filename eventing.yaml
+$  kubectl apply --filename eventing.yaml
+
+$  wget https://github.com/knative/eventing/releases/download/v0.15.0/in-memory-channel.yaml
+$  kubectl apply --filename in-memory-channel.yaml
+
+$ wget https://github.com/knative/eventing/releases/download/v0.15.0/channel-broker.yaml
+$ kubectl apply --filename channel-broker.yaml
+$ kubectl get pods --namespace knative-eventing
+NAME                                    READY   STATUS    RESTARTS   AGE
+broker-controller-856784c7dd-p222f      1/1     Running   0          4d3h
+broker-filter-7b68cbf48b-rnbdz          1/1     Running   0          4d3h
+broker-ingress-76cd5bf89f-lrjzp         1/1     Running   0          4d3h
+eventing-controller-6d5dd48984-rgcqs    1/1     Running   0          4d3h
+eventing-webhook-c956d8555-xmz86        1/1     Running   1          4d3h
+imc-controller-7cc4f7b8d9-lptrf         1/1     Running   0          4d3h
+imc-dispatcher-7c587f94c-hhl49          1/1     Running   0          4d3h
+mt-broker-controller-548b9656f9-hp24t   1/1     Running   0          4d3h
+```
+验证
+```
+$ cat >hello-display.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-display
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: hello-display
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: event-display
+          # Source code: https://github.com/knative/eventing-contrib/tree/master/cmd/event_display
+          image: harbor.ctyun.dev:1443/knative-releases/knative.dev/eventing-contrib/cmd/event_display
+
+---
+
+$ Service pointing at the previous Deployment. This will be the target for event
+$ consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: hello-display
+  spec:
+    selector:
+      app: hello-display
+    ports:
+    - protocol: TCP
+      port: 80
+EOF
+
+$ cat >goodbye-display.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goodbye-display
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: goodbye-display
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: event-display
+          # Source code: https://github.com/knative/eventing-contrib/tree/master/cmd/event_display
+          image: harbor.ctyun.dev:1443/knative-releases/knative.dev/eventing-contrib/cmd/event_display
+
+---
+
+$ Service pointing at the previous Deployment. This will be the target for event
+$ consumption.
+kind: Service
+apiVersion: v1
+metadata:
+  name: goodbye-display
+spec:
+  selector:
+    app: goodbye-display
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+EOF
+
+$ kubectl create namespace event-example
+$ kubectl label namespace event-example knative-eventing-injection=enabled
+$ kubectl --namespace event-example get Broker default
+NAME      READY   REASON   URL                                                                              AGE
+default   True             http://broker-ingress.knative-eventing.svc.cluster.local/event-example/default   4d2h
+
+$ kubectl create -f hello-display.yaml -n event-example
+$ kubectl create -f goodbye-display.yaml -n event-example
+
+$ kubectl --namespace event-example get deployments hello-display goodbye-display
+NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+hello-display     1/1     1            1           4d2h
+goodbye-display   1/1     1            1           4d2h
+
+$ kubectl --namespace event-example apply --filename - << END
+apiVersion: eventing.knative.dev/v1alpha1
+kind: Trigger
+metadata:
+  name: hello-display
+spec:
+  filter:
+    attributes:
+      type: greeting
+  subscriber:
+    ref:
+     apiVersion: v1
+     kind: Service
+     name: hello-display
+END
+
+$ kubectl --namespace event-example apply --filename - << END
+apiVersion: eventing.knative.dev/v1alpha1
+kind: Trigger
+metadata:
+  name: goodbye-display
+spec:
+  filter:
+    attributes:
+      source: sendoff
+  subscriber:
+    ref:
+     apiVersion: v1
+     kind: Service
+     name: goodbye-display
+END
+
+$ kubectl --namespace event-example get triggers
+NAME              READY   REASON   BROKER    SUBSCRIBER_URI                                            AGE
+goodbye-display   True             default   http://goodbye-display.event-example.svc.cluster.local/   4d2h
+hello-display     True             default   http://hello-display.event-example.svc.cluster.local/     4d2h
+```
+
+<br />创建验证用的pod
+```
+$ kubectl --namespace event-example apply --filename - << END
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: curl
+  name: curl
+spec:
+  containers:
+    # This could be any image that we can SSH into and has curl.
+  - image: radial/busyboxplus:curl
+    imagePullPolicy: IfNotPresent
+    name: curl
+    resources: {}
+    stdin: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    tty: true
+END
+
+$  kubectl --namespace event-example attach curl -it
+Defaulting container name to curl.
+Use 'kubectl describe pod/curl -n event-example' to see all of the containers in this pod.
+If you don't see a command prompt, try pressing enter.
+[ root@curl:/ ]$ 
+```
+
+<br />进入curl pod之后继续验证
+```
+[ root@curl:/ ]$ curl -v "http://broker-ingress.knative-eventing.svc.cluster.local/event-example/default" \
+>   -X POST \
+>   -H "Ce-Id: say-hello" \
+>   -H "Ce-Specversion: 0.3" \
+>   -H "Ce-Type: greeting" \
+>   -H "Ce-Source: not-sendoff" \
+>   -H "Content-Type: application/json" \
+>   -d '{"msg":"Hello Knative!"}'
+> POST /event-example/default HTTP/1.1
+> User-Agent: curl/7.35.0
+> Host: broker-ingress.knative-eventing.svc.cluster.local
+> Accept: */*
+> Ce-Id: say-hello
+> Ce-Specversion: 0.3
+> Ce-Type: greeting
+> Ce-Source: not-sendoff
+> Content-Type: application/json
+> Content-Length: 24
+> 
+< HTTP/1.1 202 Accepted
+< Content-Length: 0
+< Date: Mon, 22 Jun 2020 11:38:04 GMT
+< 
+[ root@curl:/ ]$ curl -v "http://broker-ingress.knative-eventing.svc.cluster.local/event-example/default" \
+>   -X POST \
+>   -H "Ce-Id: say-goodbye" \
+>   -H "Ce-Specversion: 0.3" \
+>   -H "Ce-Type: not-greeting" \
+>   -H "Ce-Source: sendoff" \
+>   -H "Content-Type: application/json" \
+>   -d '{"msg":"Goodbye Knative!"}'
+> POST /event-example/default HTTP/1.1
+> User-Agent: curl/7.35.0
+> Host: broker-ingress.knative-eventing.svc.cluster.local
+> Accept: */*
+> Ce-Id: say-goodbye
+> Ce-Specversion: 0.3
+> Ce-Type: not-greeting
+> Ce-Source: sendoff
+> Content-Type: application/json
+> Content-Length: 26
+> 
+< HTTP/1.1 202 Accepted
+< Content-Length: 0
+< Date: Mon, 22 Jun 2020 11:38:15 GMT
+< 
+[ root@curl:/ ]$ curl -v "http://broker-ingress.knative-eventing.svc.cluster.local/event-example/default" \
+>   -X POST \
+>   -H "Ce-Id: say-hello-goodbye" \
+>   -H "Ce-Specversion: 0.3" \
+>   -H "Ce-Type: greeting" \
+>   -H "Ce-Source: sendoff" \
+>   -H "Content-Type: application/json" \
+>   -d '{"msg":"Hello Knative! Goodbye Knative!"}'
+> POST /event-example/default HTTP/1.1
+> User-Agent: curl/7.35.0
+> Host: broker-ingress.knative-eventing.svc.cluster.local
+> Accept: */*
+> Ce-Id: say-hello-goodbye
+> Ce-Specversion: 0.3
+> Ce-Type: greeting
+> Ce-Source: sendoff
+> Content-Type: application/json
+> Content-Length: 41
+> 
+< HTTP/1.1 202 Accepted
+< Content-Length: 0
+< Date: Mon, 22 Jun 2020 11:38:42 GMT
+< 
+```
+
+
+<a name="8vNen"></a>
+## 参考
+
+1. [https://knative.dev/docs/install/any-kubernetes-cluster/](https://knative.dev/docs/install/any-kubernetes-cluster/)
+1. [https://knative-sample.com/10-getting-started/30-install-knative/](https://knative-sample.com/10-getting-started/30-install-knative/)

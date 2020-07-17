@@ -1,0 +1,84 @@
+---
+layout: post
+title:  "Knative概述"
+date:   2020-07-17 10:00:00 +0800
+categories: kubernetes knative
+---
+
+# Knative概述
+
+<a name="VsqVY"></a>
+## 前提
+Knative目前在快速发展，以下内容基于0.15版编写。
+<a name="6bcyB"></a>
+## Knative是什么
+基于Kubernetes的serverless框架，是众多serverless的解决方案之一。
+
+<a name="c7drw"></a>
+## Knative优势
+
+- Knative 无需置备和管理服务器。开发人员就可以专注于代码，而不必担心设置复杂的基础架构。
+- 降低运营成本，可以缩容到0。
+
+<br />
+<a name="cck12"></a>
+## Knative体系
+
+![knative体系]({{ site.url }}/assets/knative/arch.svg "knative")<br />
+
+- Developers Serverless 服务的开发人员可以直接使用原生的 Kubernetes API 基于 Knative 部署 Serverless 服务
+- Contributors 主要是指社区的贡献者
+- Operators Knative 可以被集成到任何支持的环境中，比如：云厂商、或者企业内部。目前 Knative 是基于 Kubernetes 来实现的，有 Kubernetes 的地方就可以部署 Knative
+
+
+<br />新版的架构图里可以看出Knative不再强依赖istio了。<br />
+
+<a name="O1O10"></a>
+## Knative组件
+Knative 主要由 Serving 和 Eventing 核心组件构成。除此之外使用 Tekton 作为CI/CD构建工具，Tekton用来替换老版本中的Build组件。
+
+<a name="serving"></a>
+### Serving
+Knative 作为 Severless 框架最终是用来提供服务的， 那么 Knative Serving 应运而生。 Knative Serving 构建于 Kubernetes 和 Istio 之上，为 Serverless 应用提供部署和服务支持。其特性如下：
+
+- 快速部署 Serverless 容器
+- 支持自动扩缩容和缩到 0 实例
+- 基于 Istio 组件，提供路由和网络编程
+- 支持部署快照
+
+
+<br />Knative Serving 中定义了以下 CRD 资源：
+
+- Service: 自动管理工作负载整个生命周期。负责创建 Route、Configuration 以及 Revision 资源。通过 Service 可以指定路由流量使用最新的 Revision 还是固定的 Revision
+- Route：负责映射网络端点到一个或多个 Revision。可以通过多种方式管理流量。包括灰度流量和重命名路由
+- Configuration: 负责保持 Deployment 的期望状态，提供了代码和配置之间清晰的分离，并遵循应用开发的 12 要素。修改一次 Configuration 产生一个 Revision
+- Revision：Revision 资源是对工作负载进行的每个修改的代码和配置的时间点快照。Revision 是不可变对象，可以长期保留
+
+<br />![serving]({{ site.url }}/assets/knative/serving.png "serving")<br />
+
+<a name="SLaWS"></a>
+### Eventing
+Knative Eventing 旨在满足云原生开发中通用需求, 以提供可组合的方式绑定事件源和事件消费者。其设计目标：
+
+- Knative Eventing 提供的服务是松散耦合，可独立开发和部署。服务可跨平台使用（如 Kubernetes, VMs, SaaS 或者 FaaS）。
+- 事件的生产者和事件的消费者是相互独立的。任何事件的生产者（事件源）可以先于事件的消费者监听之前产生事件，同样事件的消费者可以先于事件产生之前监听事件。
+- 支持第三方的服务对接该 Eventing 系统。
+- 确保跨服务的互操作性。
+
+
+<br />eventing架构图<br />
+<br />![eventing]({{ site.url }}/assets/knative/eventing.png "eventing")<br />
+<br />目前 Knative Eventing 主要有三种使用模式:
+
+- 直接事件接收 通过事件源直接转发到单一事件消费者。支持直接调用 Knative Service 或者 Kubernetes Service 进行消费处理。这样的场景下，如果调用的服务不可用，事件源负责重试机制处理。
+- 通过事件通道(Channel)以及事件订阅(Subscriptions)转发事件处理 这样的情况下，可以通过 Channel 保证事件不丢失并进行缓冲处理，通过 Subscriptions 订阅事件以满足多个消费端处理。
+- 通过 brokers 和 triggers 支持事件消费及过滤机制。
+
+
+<br />
+
+<a name="eY6xZ"></a>
+## 参考
+
+1. [https://knative.dev/docs/](https://knative.dev/docs/)
+1. [https://knative-sample.com/](https://knative-sample.com/)
