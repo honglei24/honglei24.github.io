@@ -1,0 +1,189 @@
+---
+layout: post
+title:  "在k8s集群中安装redis集群"
+date:   2021-10-11 15:00:00 +0800
+categories: kubernetes redis sentinel
+---
+
+## 安装operator
+```
+# cat > all-redis-operator-resources.yaml<<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: redisoperator
+  name: redisoperator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redisoperator
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: redisoperator
+    spec:
+      serviceAccountName: redisoperator
+      containers:
+        - image: 10.95.227.130:8092/library/spotahome/redis-operator:latest #修改镜像名
+          imagePullPolicy: IfNotPresent
+          name: app
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            limits:
+              cpu: 100m
+              memory: 50Mi
+            requests:
+              cpu: 10m
+              memory: 50Mi
+      restartPolicy: Always
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: redisoperator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: redisoperator
+subjects:
+  - kind: ServiceAccount
+    name: redisoperator
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: redisoperator
+rules:
+  - apiGroups:
+      - databases.spotahome.com
+    resources:
+      - redisfailovers
+    verbs:
+      - "*"
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - endpoints
+      - events
+      - configmaps
+    verbs:
+      - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - "get"
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - statefulsets
+    verbs:
+      - "*"
+  - apiGroups:
+      - policy
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - "*"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redisoperator
+EOF
+# kubectl apply -f all-redis-operator-resources.yaml
+```
+
+## 部署redis集群
+```
+# kubectl label nodes 10.95.227.212 app.redis=true
+# kubectl label nodes 10.95.227.213 app.redis=true
+# kubectl label nodes 10.95.227.214 app.redis=true
+# kubectl create ns vss
+# echo -n 'b0j#N*9JEW' >password
+# kubectl -n vss create secret generic redis-auth --from-file=password
+# cat >sentinel.yaml <<EOF 
+apiVersion: databases.spotahome.com/v1
+kind: RedisFailover
+metadata:
+  name: vss
+  namespace: vss
+  labels:
+    app.example.com/label1: value
+spec:
+  sentinel:
+    replicas: 3
+    image: 10.95.227.130:8092/library/redis:5.0 
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: app.redis
+              operator: In
+              values:
+              - "true"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  redis:
+    replicas: 3
+    customConfig:
+      - "notify-keyspace-events Ex"
+      - "requirepass b0j#N*9JEW"
+    image: 10.95.227.130:8092/library/redis:5.0 
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: app.redis
+              operator: In
+              values:
+              - "true"
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: statefulset.kubernetes.io/pod-name 
+                    operator: Exists 
+              topologyKey: "kubernetes.io/hostname" 
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2048Mi
+      limits:
+        cpu: 1000m
+        memory: 2048Mi
+  auth:
+    secretPath: redis-auth
+EOF
+# kubectl apply -f sentinel.yaml
+```
+
+## 参考
+[https://kubernetes.io/zh/docs/concepts/scheduling-eviction/assign-pod-node/](https://kubernetes.io/zh/docs/concepts/scheduling-eviction/assign-pod-node/)<br />[https://github.com/ucloud/redis-operator](https://github.com/ucloud/redis-operator)

@@ -1,0 +1,88 @@
+---
+layout: post
+title:  "在x86_64环境打包arm64镜像"
+date:   2021-05-08 15:00:00 +0800
+categories: kubernetes knative arm
+---
+
+# 在x86_64环境打包arm64镜像
+
+<a name="RWK5L"></a>
+# 背景
+验证knative在arm集群上的可用性。
+<a name="KsmbT"></a>
+# 环境
+发行版：ubuntu 18.04<br />内核版本：5.4.0<br />docker版本：19.03.6
+<a name="TU7rb"></a>
+# 操作手册
+<a name="l0Jq8"></a>
+## docker开启实验模式
+修改/etc/docker/daemon.json，重启docker.
+```bash
+$ sudo vim /etc/docker/daemon.json
+{
+  "experimental": true
+}
+
+$ sudo systemctl restart docker
+```
+<a name="6aL6p"></a>
+## 安装buildx
+```bash
+$  wget https://github.com/docker/buildx/releases/download/v0.4.1/buildx-v0.4.1.linux-amd64
+$  mkdir -p ~/.docker/cli-plugins
+$  mv buildx-v0.4.1.linux-amd64.1 /home/hl/.docker/cli-plugins/docker-buildx
+$  chmod +x ~/.docker/cli-plugins/docker-buildx
+```
+<a name="JG9yu"></a>
+## 安装qemu
+```bash
+$  QEMU_VERSION=v5.0.0-2
+$  wget -c https://github.com/multiarch/qemu-user-static/releases/download/${QEMU_VERSION}/qemu-$(uname -m)-static -O qemu-$(uname -m)-static     && chmod +x qemu-$(uname -m)-static
+$  sudo mv qemu-x86_64-static /usr/local/bin/qemu-$(uname -m)-static
+```
+<a name="5SROW"></a>
+## 打包/推送镜像
+以下是serving打包步骤,eventing类似，步骤略。
+```bash
+$ git clone  https://github.com/knative/serving.git -b release-0.15
+$ cd serving
+$ cat >Dockerfile.tpl <<EOF
+FROM golang:1.14 as builder
+
+WORKDIR /go/src/knative.dev/__COMPONENT
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod vendor ./cmd/__PKG
+
+FROM alpine
+
+RUN mkdir /ko-app/
+COPY --from=builder /go/src/knative.dev/__COMPONENT/__BIN /ko-app/__BIN
+
+ENTRYPOINT ["/ko-app/__BIN"]
+EOF
+
+$ vi build.sh
+#！ /bin/bash
+
+VERSION="v0.15.0"
+BASEDIR=$(pwd $0)
+COMPONENT="serving"
+for NAME in `ls ${BASEDIR}/cmd`
+do
+  sed "s/__PKG/${NAME}/g" ${BASEDIR}/Dockerfile.tpl >${BASEDIR}/Dockerfile
+  sed -i "s/__COMPONENT/${COMPONENT}/g" ${BASEDIR}/Dockerfile
+  docker buildx build --platform linux/arm64 . -t harbor.ctyuncdn.cn/knative-releases/knative.dev/serving/cmd/${NAME}:${VERSION}-arm64 --push
+done
+
+$ sh -x build.sh
+```
+<a name="9YJmc"></a>
+# 总结
+
+1. buildx和常规的docker命令使用方式有所区别，需要话时间摸索。
+1. qemu可能存在问题，在打基础镜像的时候，有些命令用不了。比如pip，可以参考链接: [https://github.com/docker/buildx/issues/493](https://github.com/docker/buildx/issues/493)
+1. 如果有arm机器，直接安装工具链(go, docker)来打镜像更容易，不需要搞这么复杂。
+<a name="dqIRT"></a>
+# 参考
+[https://docs.docker.com/buildx/working-with-buildx/](https://docs.docker.com/buildx/working-with-buildx/)<br />[https://github.com/docker/cli/blob/master/experimental/README.md](https://github.com/docker/cli/blob/master/experimental/README.md)<br />[https://my.oschina.net/uyinn/blog/4706948](https://my.oschina.net/uyinn/blog/4706948)

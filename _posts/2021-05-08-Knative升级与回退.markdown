@@ -1,0 +1,162 @@
+---
+layout: post
+title:  "Knative升级"
+date:   2021-05-08 15:30:00 +0800
+categories: kubernetes knative
+---
+
+# Knative升级（v0.15.0->v0.17.0）
+## 环境信息：
+
+- k8s版本：1.16.0
+- knative版本：0.15.0
+- istio版本：1.6.2
+## 升级
+### 执行pre-install脚本
+```
+$ kubectl apply -f eventing-pre-install-jobs.yaml
+```
+### 执行post-install脚本
+```
+$ kubectl create -f serving-post-install-jobs.yaml
+```
+### 执行升级脚本
+** 执行serving-core.yaml，升级了activatior、autoscaler、controller和webhook组件**
+```
+$ kubectl apply -f serving-core.yaml
+```
+```
+$ kubectl get po -n knative-serving 
+NAME                                            READY   STATUS      RESTARTS   AGE
+activator-c4567fd65-6m5n4                       1/1     Running     0          82s
+autoscaler-6f66767bb6-ltf92                     1/1     Running     0          82s
+controller-85c5bf4664-wflbt                     1/1     Running     0          82s
+istio-webhook-679b6b74b9-6dhqd                  1/1     Running     0          4h8m
+networking-istio-5f5788f54d-hbwwz               1/1     Running     0          4h8m
+storage-version-migration-serving-bvns4-5gwfm   0/1     Completed   0          3h52m
+webhook-7dcdcf95f-7n9vn                         1/1     Running     0          82s
+```
+**执行release.yaml，升级istio-webhook、networking-istio组件**
+```
+$ kubectl apply -f release.yaml
+```
+```
+$ kubectl get po -n knative-serving 
+NAME                                            READY   STATUS        RESTARTS   AGE
+activator-c4567fd65-6m5n4                       1/1     Running       0          7m27s
+autoscaler-6f66767bb6-ltf92                     1/1     Running       0          7m27s
+controller-85c5bf4664-wflbt                     1/1     Running       0          7m27s
+istio-webhook-679b6b74b9-6dhqd                  1/1     Terminating   0          4h14m
+istio-webhook-6cddcd5dd4-hlhdq                  1/1     Running       0          25s
+networking-istio-77b9749b6f-rvcf4               1/1     Running       0          25s
+storage-version-migration-serving-bvns4-5gwfm   0/1     Completed     0          3h58m
+webhook-7dcdcf95f-7n9vn                         1/1     Running       0          7m27s
+```
+执行eventing-crd.yaml、eventing-core.yaml和eventing.yaml，升级eventing-controller、eventing-webhook、imc-controller、imc-dispatcher、mt-broker-controller、mt-broker-filter、mt-broker-ingress组件
+```
+$ kubectl apply -f eventing-crds.yaml
+```
+```
+$ kubectl apply -f eventing-core.yaml
+```
+```
+$ kubectl apply -f eventing.yaml
+```
+```
+$ kubectl get po -n knative-eventing 
+NAME                                       READY   STATUS             RESTARTS   AGE
+broker-controller-65b5f89777-z7pj9         1/1     Running            0          4h32m
+broker-filter-997f48f8f-v8x7r              1/1     Running            0          4h32m
+broker-ingress-c85b88f94-pp8dz             1/1     Running            0          4h32m
+eventing-controller-5644b958cf-j9jtl       1/1     Running            0          3m38s
+eventing-webhook-59f7d6cdd9-7gx7d          1/1     Running            0          6m30s
+imc-controller-67b46c996c-8x9kj            1/1     Running   					0          6m29s
+imc-controller-78dcbb4789-9j726            1/1     Terminating        0          4h32m
+imc-dispatcher-5b4b7cd9cb-72bjm            1/1     Terminating        0          4h32m
+imc-dispatcher-95b5c88f7-5xs4v             1/1     Running   					0          6m29s
+kafka-ch-controller-88fdf969c-f7m52        1/1     Running            0          4h32m
+kafka-webhook-6784586d88-qqk9h             1/1     Running            0          4h32m
+mt-broker-controller-c7bdb9bc9-d4mqf       1/1     Running            0          6m29s
+mt-broker-filter-564bcb79b5-tw7pj          1/1     Running            0          6m29s
+mt-broker-ingress-6d888cd8b4-bjmgh         1/1     Running            0          6m29s
+storage-version-migration-eventing-v4ftz   0/1     Completed          0          4h15m
+```
+执行kafka-channel.yaml，升级kafka-ch-controller和kafka-webhook组件
+```
+ $ kubectl apply -f kafka-channel.yaml
+```
+```
+$ kubectl get po -n knative-eventing 
+NAME                                       READY   STATUS      RESTARTS   AGE
+broker-controller-65b5f89777-z7pj9         1/1     Running     0          4h36m
+broker-filter-997f48f8f-v8x7r              1/1     Running     0          4h36m
+broker-ingress-c85b88f94-pp8dz             1/1     Running     0          4h36m
+eventing-controller-5644b958cf-j9jtl       1/1     Running     0          8m32s
+eventing-webhook-59f7d6cdd9-7gx7d          1/1     Running     0          11m
+imc-controller-67b46c996c-b6xmp            1/1     Running     0          112s
+imc-dispatcher-95b5c88f7-8sbpt             1/1     Running     0          105s
+kafka-ch-controller-b95646fb9-p7c6q        1/1     Running     0          110s
+kafka-webhook-7c459c9d4-gklps              1/1     Running     0          110s
+mt-broker-controller-c7bdb9bc9-d4mqf       1/1     Running     0          11m
+mt-broker-filter-564bcb79b5-tw7pj          1/1     Running     0          11m
+mt-broker-ingress-6d888cd8b4-bjmgh         1/1     Running     0          11m
+storage-version-migration-eventing-v4ftz   0/1     Completed   0          4h20m
+```
+
+4. 验证升级
+```
+$ kubectl apply -f eventing-post-install-jobs.yaml
+```
+```
+$ kubectl get job -A
+NAMESPACE          NAME                                      COMPLETIONS   DURATION   AGE
+knative-eventing   storage-version-migration-eventing        1/1           6s         4h31m
+knative-eventing   v0.17.0-pingsource-cleanup                1/1           7s         9s
+knative-serving    storage-version-migration-serving-bvns4   1/1           2s         4h30m
+```
+# Knative回退（v0.17.0->v0.15.0）
+## 环境信息：
+
+- k8s版本：1.16.0
+- knative版本：0.17.0
+- istio版本：1.6.2
+## 版本特性：
+knative 0.17.0支持nodeSelector标签。例如给某个ksvc打上nodeSelector: meta.ecf.io/serverless: fc.ctyun的标签后，该ksvc会将pod调度到具有meta.ecf.io/serverless=fc.ctyun标签的node上。
+```
+kubectl get ksvc -n efc-1006 fc-228-version-latest -o yaml
+```
+![image.png](https://cdn.nlark.com/yuque/0/2020/png/1133691/1606709712352-daeca54b-c2ba-417e-852e-727e82ee221d.png#align=left&display=inline&height=699&margin=%5Bobject%20Object%5D&name=image.png&originHeight=699&originWidth=587&size=46828&status=done&style=none&width=587)
+![image.png](https://cdn.nlark.com/yuque/0/2020/png/1133691/1606710238258-99f96126-cf10-4214-be4c-22207cd0f0b2.png#align=left&display=inline&height=348&margin=%5Bobject%20Object%5D&name=image.png&originHeight=348&originWidth=756&size=35143&status=done&style=none&width=756)
+当该标签的值与nodeSelector不匹配时，ksvc status报错没有匹配的标签，pod处于pending状态。
+![image.png](https://cdn.nlark.com/yuque/0/2020/png/1133691/1606710159902-21e822b8-6777-4ff8-8d9e-cf95e1eca1b1.png#align=left&display=inline&height=87&margin=%5Bobject%20Object%5D&name=image.png&originHeight=87&originWidth=875&size=14015&status=done&style=none&width=875)
+给node打上nodeSelector标签后，pod成功调度到节点显示running状态。
+![image.png](https://cdn.nlark.com/yuque/0/2020/png/1133691/1606710267580-553d2d9d-dd80-42dc-a371-77e7007eb398.png#align=left&display=inline&height=73&margin=%5Bobject%20Object%5D&name=image.png&originHeight=73&originWidth=842&size=12721&status=done&style=none&width=842)
+![image.png](https://cdn.nlark.com/yuque/0/2020/png/1133691/1606710331778-1bd8fd44-a5ef-4049-a735-ab73d9a05421.png#align=left&display=inline&height=71&margin=%5Bobject%20Object%5D&name=image.png&originHeight=71&originWidth=821&size=10345&status=done&style=none&width=821)
+## 版本回退
+### 备份knative-eventing
+```
+$ kubectl get -n knative-eventing deploy -oyaml > knative-eventing-deploy.yaml
+$ kubectl get -n knative-eventing svc -oyaml > knative-eventing-svc.yaml
+$ kubectl get -n knative-eventing hpa -oyaml > knative-eventing-hpa.yaml
+```
+### 备份knative-serving
+```
+$ kubectl get -n knative-serving deploy -oyaml > knative-serving-deploy.yaml
+$ kubectl get -n knative-serving svc -oyaml > knative-serving-svc.yaml
+$ kubectl get -n knative-serving hpa -oyaml > knative-serving-hpa.yaml
+```
+### 备份knative-sources
+```
+$ kubectl get -n knative-sources deploy -oyaml > knative-sources-deploy.yaml
+$ kubectl get -n knative-sources svc -oyaml > knative-sources-svc.yaml
+```
+### 备份用户数据（ksvc、kafkasource）
+```
+$ kubectl get ksvc -n user-namespace -o yaml > ksvc.yaml # user-namespace需要更改为用户ns
+$ kubectl get kafkasources.sources.knative.dev -n user-namespace -o yaml > ks.yaml # user-namespace需要更改为用户ns
+```
+### 执行回退步骤（脚本都是0.15.0版本）
+```
+$ kubectl apply -f serving-core.yaml
+$ kubectl apply -f release.yaml
+```
