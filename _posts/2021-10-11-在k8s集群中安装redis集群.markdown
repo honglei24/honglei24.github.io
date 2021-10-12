@@ -28,7 +28,7 @@ spec:
     spec:
       serviceAccountName: redisoperator
       containers:
-        - image: 10.95.227.130:8092/library/spotahome/redis-operator:latest #修改镜像名
+        - image: 192.168.0.130:8092/library/spotahome/redis-operator:latest #修改镜像名
           imagePullPolicy: IfNotPresent
           name: app
           securityContext:
@@ -114,11 +114,11 @@ EOF
 
 ## 部署redis集群
 ```
-# kubectl label nodes 10.95.227.212 app.redis=true
-# kubectl label nodes 10.95.227.213 app.redis=true
-# kubectl label nodes 10.95.227.214 app.redis=true
+# kubectl label nodes 192.168.0.212 app.redis=true
+# kubectl label nodes 192.168.0.213 app.redis=true
+# kubectl label nodes 192.168.0.214 app.redis=true
 # kubectl create ns vss
-# echo -n 'b0j#N*9JEW' >password
+# echo -n '123456' >password
 # kubectl -n vss create secret generic redis-auth --from-file=password
 # cat >sentinel.yaml <<EOF 
 apiVersion: databases.spotahome.com/v1
@@ -131,7 +131,7 @@ metadata:
 spec:
   sentinel:
     replicas: 3
-    image: 10.95.227.130:8092/library/redis:5.0 
+    image: 192.168.0.130:8092/library/redis:5.0 
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -152,8 +152,8 @@ spec:
     replicas: 3
     customConfig:
       - "notify-keyspace-events Ex"
-      - "requirepass b0j#N*9JEW"
-    image: 10.95.227.130:8092/library/redis:5.0 
+      - "requirepass 123456"
+    image: 192.168.0.130:8092/library/redis:5.0 
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
