@@ -1,23 +1,30 @@
 ---
 layout: post
 title:  "racher离线部署"
-date:   2021-12-24 16:00:00 +0800
+date:   2022-02-20 16:00:00 +0800
 categories: kubernetes rancher
 ---
 
-下载镜像
+# 下载镜像
 前提：可以访问公网
+```
 wget https://github.com/rancher/rancher/releases/download/v2.5.11/rancher-images.txt
 wget https://github.com/rancher/rancher/releases/download/v2.5.11/rancher-save-images.sh
 wget https://github.com/rancher/rancher/releases/download/v2.5.11/rancher-load-images.sh
 ./rancher-save-images.sh
+```
 脚本执行完成后，会生成rancher-images.tar.gz
 上传镜像到私有环境
+```
 scp ./rancher-images.tar.gz <目的地址:/目录/>
+```
 rancher部署
 上传镜像到私有镜像仓库
+```
 ./rancher-load-images.sh --registry 10.95.227.130:8092
+```
 一键生成 ssl 自签名证书脚本
+```
 #!/bin/bash -e
 
 help ()
@@ -175,9 +182,13 @@ echo "cp ${SSL_DOMAIN}.key tls.key"
 cp ${SSL_DOMAIN}.key tls.key
 echo "cp ${SSL_DOMAIN}.crt tls.crt"
 cp ${SSL_DOMAIN}.crt tls.crt
+```
 生成证书
+```
 ./create_self-signed-cert.sh --ssl-domain=8443-gxlz.qhproxy.each.ml --ssl-trusted-domain=qhproxy.each.ml --ssl-trusted-ip=10.95.227.14,10.95.227.15,10.95.227.16,10.95.227.129 --ssl-size=2048 --ssl-date=3650
+```
 启动rancher
+```
 docker run -d --privileged --restart=unless-stopped --name rancher \
 -p 8080:80 -p 8443:443 \
 -e CATTLE_SYSTEM_DEFAULT_REGISTRY=10.95.227.130:8092 \
@@ -187,5 +198,6 @@ docker run -d --privileged --restart=unless-stopped --name rancher \
 -v /home/vcs/rancher/ssl/tls.key:/etc/rancher/ssl/key.pem \
 -v /home/vcs/rancher/ssl/cacerts.pem:/etc/rancher/ssl/cacerts.pem \
 10.95.227.130:8092/rancher/rancher:v2.5.11
+```
 agent部署
 登录rancher控制台，添加集群，按照提示部署agent.
